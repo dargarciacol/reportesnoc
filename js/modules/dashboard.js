@@ -935,110 +935,57 @@
     // CARGA GENERAL DEL DASHBOARD
     // =========================================================
 
+    a// =========================================================
+    // CARGA GENERAL DEL DASHBOARD (CONECTADO A NOVA SIEM BACKEND)
+    // =========================================================
+
     async function loadDashboard() {
         if (!isActive || loading) return;
 
-        if (
-            !HttpClient ||
-            !ENDPOINTS?.EVENTS?.LIST ||
-            !ENDPOINTS?.ALERTS?.LIST ||
-            !ENDPOINTS?.INCIDENTS?.LIST ||
-            !ENDPOINTS?.DETECTION?.RULES
-        ) {
-            console.error(
-                'NOVA SIEM: La configuración de los endpoints no está disponible.'
-            );
-            return;
-        }
-
         loading = true;
-
-        const currentRequest = ++requestCounter;
-
         showLoading();
 
-        // Reiniciar datos antes de consultar los módulos.
-        dashboardData = {
-            events: [],
-            alerts: [],
-            incidents: [],
-            rules: [],
-            totals: {
-                events: 0
-            }
-        };
+        try {
+            // 1. Petición única al backend de Spring Boot
+            const response = await fetch('http://localhost:8080/api/v1/dashboard/summary', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // TODO: Cuando el login esté listo, enviaremos el JWT aquí:
+                    // 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+                }
+            });
 
-        const requests = [
-            {
-                name: 'Eventos',
-                execute: loadEvents
-            },
-            {
-                name: 'Alertas',
-                execute: loadAlerts
-            },
-            {
-                name: 'Incidentes',
-                execute: loadIncidents
-            },
-            {
-                name: 'Reglas de detección',
-                execute: loadDetectionRules
-            }
-        ];
+            if (response.ok) {
+                const result = await response.json();
+                const metrics = result.data; // Aquí llega tu DashboardSummaryDTO
 
-        const results = await Promise.allSettled(
-            requests.map(request => request.execute())
-        );
+                // 2. Actualizamos las 4 tarjetas principales del HTML
+                setText(totalEvents, formatNumber(metrics.totalEvents));
+                setText(activeAlerts, formatNumber(metrics.activeAlerts));
+                setText(openIncidents, formatNumber(metrics.openIncidents));
+                setText(activeRules, formatNumber(metrics.activeRules));
 
-        if (!isActive || currentRequest !== requestCounter) {
-            loading = false;
-            return;
-        }
+                // 3. Limpiamos las tablas/gráficos temporalmente para evitar errores visuales
+                // (Estas requerirán endpoints separados más adelante)
+                if (recentAlerts) {
+                    recentAlerts.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Grilla conectada (Pendiente endpoint de recientes)</td></tr>';
+                }
+                if (systemActivity) {
+                    systemActivity.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Grilla conectada (Pendiente endpoint de actividad)</td></tr>';
+                }
 
-        let successfulModules = 0;
-
-        results.forEach((result, index) => {
-            if (result.status === 'fulfilled') {
-                successfulModules++;
-
-                console.info(
-                    `NOVA SIEM: ${requests[index].name} cargados correctamente.`
-                );
+                console.info("NOVA SIEM: Métricas del dashboard cargadas correctamente.");
+                
             } else {
-                console.error(
-                    `NOVA SIEM: Error al cargar ${requests[index].name}:`,
-                    result.reason
-                );
+                console.error("NOVA SIEM: El servidor respondió con error", response.status);
+                showModuleError(recentAlerts, `Error del servidor: HTTP ${response.status}`);
             }
-        });
-
-        loading = false;
-
-        if (successfulModules === 0) {
-            console.error(
-                'NOVA SIEM: No fue posible cargar ningún módulo.'
-            );
-
-            showModuleError(
-                recentAlerts,
-                'No fue posible cargar los datos del panel.'
-            );
-
-            showModuleError(
-                systemActivity,
-                'No fue posible cargar la actividad del sistema.'
-            );
-
-            return;
-        }
-
-        renderDashboard();
-
-        if (successfulModules < requests.length) {
-            console.warn(
-                'NOVA SIEM: El panel se cargó parcialmente. Algunos módulos no respondieron.'
-            );
+        } catch (error) {
+            console.error("NOVA SIEM: Error de conexión (¿Backend apagado o bloqueo CORS?)", error);
+            showModuleError(recentAlerts, 'Error de red. Verifica que el backend esté en localhost:8080.');
+        } finally {
+            loading = false;
         }
     }
 
