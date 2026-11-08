@@ -289,46 +289,53 @@
         updateStatistics();
     }
 
-    async function loadAlerts() {
-        if (!tbody || typeof HttpClient === 'undefined') {
-            console.error('Alerts: HttpClient or table element not found.');
-            return;
+   async function loadAlerts() {
+    if (!tbody || typeof HttpClient === 'undefined') {
+        console.error('Alerts: HttpClient or table element not found.');
+        return;
+    }
+
+    loading = true;
+    renderAlerts();
+
+    let loadError = null;
+
+    try {
+        const response = await HttpClient.get(ENDPOINTS.ALERTS.LIST);
+        const page = response?.data;
+
+        if (!page || !Array.isArray(page.content)) {
+            throw new Error('Unexpected alerts API response format.');
         }
 
-        loading = true;
-        renderAlerts();
+        alerts = page.content.map(normalizeAlert);
 
-        try {
-            const response = await HttpClient.get(ENDPOINTS.ALERTS.LIST);
-            const page = response?.data;
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+        }
 
-            if (!page || !Array.isArray(page.content)) {
-                throw new Error('Unexpected alerts API response format.');
-            }
+    } catch (error) {
+        console.error('Failed to load alerts:', error);
 
-            alerts = page.content.map(normalizeAlert);
+        loadError = error.message || 'Unable to load alerts';
+        alerts = [];
 
-            renderAlerts();
+    } finally {
+        loading = false;
 
-            if (selectAllCheckbox) {
-                selectAllCheckbox.checked = false;
-            }
-
-        } catch (error) {
-            console.error('Failed to load alerts:', error);
-
+        if (loadError) {
             tbody.innerHTML = `
                 <tr>
                     <td colspan="7" class="text-center text-danger py-4">
-                        ${escapeHTML(error.message || 'Unable to load alerts')}
+                        ${escapeHTML(loadError)}
                     </td>
                 </tr>
             `;
-
-        } finally {
-            loading = false;
+        } else {
+            renderAlerts();
         }
     }
+}
 
     async function updateAlertStatus(id, status) {
         if (!id || !Object.values(STATUS).includes(status)) {
