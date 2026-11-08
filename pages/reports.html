@@ -1,0 +1,240 @@
+
+<div class="container-fluid p-0">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0 text-main" data-i18n="reportingTitle">
+            Reporting & Compliance
+        </h2>
+
+        <button class="btn btn-primary btn-sm fw-bold"
+                data-bs-toggle="modal"
+                data-bs-target="#generateReportModal">
+            <i class="bi bi-file-earmark-plus me-1"></i>
+            <span data-i18n="generateNewReport">Generate New Report</span>
+        </button>
+    </div>
+
+    <!-- Statistics -->
+    <div class="row g-3 mb-4">
+
+        <div class="col-md-4">
+            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+                <div class="text-muted small text-uppercase fw-semibold"
+                     data-i18n="totalReports">
+                    Total Reports Generated
+                </div>
+                <div class="fs-3 fw-bold text-main mt-1" id="stat-total-reports">0</div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+                <div class="text-muted small text-uppercase fw-semibold"
+                     data-i18n="incidentSummaries">
+                    Incident Summaries
+                </div>
+                <div class="fs-3 fw-bold text-primary-nova mt-1" id="stat-incident-reports">0</div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+                <div class="text-muted small text-uppercase fw-semibold"
+                     data-i18n="executiveCompliance">
+                    Executive & Compliance
+                </div>
+                <div class="fs-3 fw-bold text-success mt-1" id="stat-compliance-reports">0</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Filters -->
+    <div class="card bg-surface border-panel mb-4 rounded-3">
+        <div class="card-body">
+            <div class="row g-3">
+
+                <div class="col-md-4">
+                    <input
+                        type="text"
+                        class="form-control bg-main border-panel text-main"
+                        placeholder="Search reports by title or ID..."
+                        data-i18n-placeholder="searchReports"
+                        id="search-reports">
+                </div>
+
+                <div class="col-md-3">
+                    <select class="form-select bg-main border-panel text-main"
+                            id="filter-report-type">
+                        <option value="" data-i18n="allTypes">All Types</option>
+                        <option value="Incident Summary" data-i18n="incidentSummary">
+                            Incident Summary
+                        </option>
+                        <option value="Executive Brief" data-i18n="executiveBrief">
+                            Executive Brief
+                        </option>
+                        <option value="Compliance" data-i18n="complianceAudit">
+                            Compliance Audit
+                        </option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <input
+                        type="date"
+                        class="form-control bg-main border-panel text-main"
+                        id="filter-report-date">
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Reports Table -->
+    <div class="card bg-surface border-panel h-100 rounded-3">
+        <div class="table-responsive">
+
+            <table class="table table-dark table-hover mb-0 align-middle"
+                   style="--bs-table-bg: var(--bg-surface);">
+
+                <thead>
+                    <tr>
+                        <th data-i18n="reportId">Report ID</th>
+                        <th data-i18n="title">Title</th>
+                        <th data-i18n="type">Type</th>
+                        <th data-i18n="generatedOn">Generated On</th>
+                        <th data-i18n="author">Author</th>
+                        <th class="text-center" data-i18n="download">Download</th>
+                    </tr>
+                </thead>
+
+                <tbody id="table-reports-body"></tbody>
+
+            </table>
+
+        </div>
+    </div>
+
+</div>
+
+<!-- Report Generator Modal -->
+<div class="modal fade" id="generateReportModal" tabindex="-1" aria-hidden="true">
+
+    <div class="modal-dialog modal-dialog-centered">
+
+        <div class="modal-content bg-surface border-panel text-main">
+
+            <div class="modal-header border-panel">
+                <h5 class="modal-title fw-bold text-primary-nova"
+                    data-i18n="reportGenerator">
+                    Report Generator
+                </h5>
+
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"
+                        data-i18n-title="close"
+                        title="Close">
+                </button>
+            </div>
+
+            <div class="modal-body">
+
+                <form id="generateReportForm">
+
+                    <div class="mb-3">
+                        <label class="form-label text-muted"
+                               data-i18n="reportType">
+                            Report Type
+                        </label>
+
+                        <select class="form-select bg-main border-panel text-main"
+                                id="report-type-select"
+                                required>
+
+                            <option value="Incident Summary" data-i18n="incidentSummary">
+                                Incident Summary
+                            </option>
+
+                            <option value="Executive Brief" data-i18n="executiveBriefWeekly">
+                                Executive Brief (Weekly)
+                            </option>
+
+                            <option value="Compliance Audit" data-i18n="complianceAudit">
+                                Compliance Audit
+                            </option>
+
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="incident-id-container">
+
+                        <label class="form-label text-muted"
+                               data-i18n="targetIncidentId">
+                            Target Incident ID
+                        </label>
+
+                        <input
+                            type="text"
+                            class="form-control bg-main border-panel text-main"
+                            id="report-incident-id"
+                            placeholder="e.g., INC-1002"
+                            data-i18n-placeholder="incidentIdExample"
+                            required>
+
+                    </div>
+
+                    <div class="mb-3">
+
+                        <label class="form-label text-muted"
+                               data-i18n="format">
+                            Format
+                        </label>
+
+                        <select class="form-select bg-main border-panel text-main"
+                                id="report-format-select"
+                                required>
+
+                            <option value="PDF" data-i18n="pdfDocument">
+                                PDF Document
+                            </option>
+
+                            <option value="CSV" data-i18n="csvExport">
+                                CSV Data Export
+                            </option>
+
+                            <option value="JSON" data-i18n="jsonRawData">
+                                JSON Raw Data
+                            </option>
+
+                        </select>
+
+                    </div>
+
+                    <div id="reportStatus"
+                         class="alert d-none mt-3"
+                         role="alert">
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+
+                        <button type="submit"
+                                class="btn btn-primary fw-bold"
+                                id="btn-submit-report"
+                                data-i18n="compileGenerate">
+                            Compile & Generate
+                        </button>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+<script src="js/modules/language.js"></script>
+<script src="js/utils/router.js"></script>

@@ -1,0 +1,268 @@
+
+/* =========================================
+   NOVA SIEM - COMPONENTS
+   ========================================= */
+
+/* CARDS */
+
+.card-nova {
+    background: var(--bg-surface);
+    border: 1px solid var(--bg-panel);
+    border-radius: 12px;
+    color: var(--text-main);
+    transition: all 0.25s ease;
+}
+
+.card-nova:hover {
+    border-color: rgba(139, 92, 246, 0.5);
+    box-shadow: 0 5px 20px rgba(139, 92, 246, 0.08);
+}
+
+.card-header-nova {
+    background: transparent;
+    border-bottom: 1px solid var(--bg-panel);
+    padding: 1rem 1.25rem;
+    color: var(--text-main);
+}
+
+/* BUTTONS */
+
+.btn-nova {
+    background: var(--primary);
+    border: 1px solid var(--primary);
+    color: #FFFFFF;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 0.65rem 1.2rem;
+    transition: all 0.2s ease;
+}
+
+.btn-nova:hover {
+    background: #7541E8;
+    border-color: #7541E8;
+    color: #FFFFFF;
+    box-shadow: 0 0 16px rgba(139, 92, 246, 0.3);
+}
+
+.btn-nova-outline {
+    background: transparent;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    border-radius: 8px;
+    padding: 0.65rem 1.2rem;
+    transition: all 0.2s ease;
+}
+
+.btn-nova-outline:hover {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+.btn-nova-danger {
+    background: rgba(255, 69, 96, 0.12);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    border-radius: 8px;
+}
+
+.btn-nova-danger:hover {
+    background: var(--danger);
+    color: #FFFFFF;
+}
+
+/* INPUTS */
+
+.form-control,
+.form-select {
+    background-color: var(--bg-main);
+    border: 1px solid var(--bg-panel);
+    color: var(--text-main);
+    border-radius: 8px;
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: var(--bg-main);
+    border-color: var(--primary);
+    color: var(--text-main);
+    box-shadow: 0 0 0 0.2rem rgba(139, 92, 246, 0.2);
+}
+
+.form-control::placeholder {
+    color: var(--text-muted);
+}
+
+.form-select option {
+    background: var(--bg-surface);
+    color: var(--text-main);
+}
+
+/* TABLES */
+
+.table-nova {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--text-main);
+    --bs-table-border-color: var(--bg-panel);
+    margin-bottom: 0;
+}
+
+.table-nova thead th {
+    background: var(--bg-panel);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    padding: 1rem;
+    border-bottom: 1px solid var(--primary);
+}
+
+.table-nova tbody td {
+    padding: 0.9rem 1rem;
+    vertical-align: middle;
+}
+
+.table-nova tbody tr:hover {
+    background: rgba(139, 92, 246, 0.07);
+}
+
+/* STATUS BADGES */
+
+.badge-nova {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.7rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-success-nova {
+    color: var(--success);
+    background: rgba(34, 211, 166, 0.12);
+    border: 1px solid rgba(34, 211, 166, 0.3);
+}
+
+.badge-warning-nova {
+    color: var(--warning);
+    background: rgba(255, 176, 32, 0.12);
+    border: 1px solid rgba(255, 176, 32, 0.3);
+}
+
+.badge-danger-nova {
+    color: var(--danger);
+    background: rgba(255, 69, 96, 0.12);
+    border: 1px solid rgba(255, 69, 96, 0.3);
+}
+
+.badge-info-nova {
+    color: var(--info);
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.badge-primary-nova {
+    color: var(--primary);
+    background: rgba(139, 92, 246, 0.12);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+/* ALERTS */
+
+.alert-nova {
+    padding: 1rem;
+    border-radius: 10px;
+    border: 1px solid var(--bg-panel);
+    background: var(--bg-surface);
+    color: var(--text-main);
+}
+
+.alert-nova-danger {
+    border-left: 4px solid var(--danger);
+}
+
+.alert-nova-warning {
+    border-left: 4px solid var(--warning);
+}
+
+.alert-nova-success {
+    border-left: 4px solid var(--success);
+}
+
+/* KPI / METRICS */
+
+.metric-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--bg-panel);
+    border-radius: 12px;
+    padding: 1.25rem;
+}
+
+.metric-label {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.metric-value {
+    color: var(--text-main);
+    font-size: 1.8rem;
+    font-weight: 700;
+}
+
+.metric-icon {
+    color: var(--primary);
+    font-size: 1.5rem;
+}
+
+/* SCROLLBAR */
+
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-panel);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+}
+
+/* TEXT UTILITIES */
+
+.text-muted-nova {
+    color: var(--text-muted) !important;
+}
+
+.text-primary-nova {
+    color: var(--primary) !important;
+}
+
+.text-secondary-nova {
+    color: var(--secondary) !important;
+}
+
+.text-success-nova {
+    color: var(--success) !important;
+}
+
+.text-danger-nova {
+    color: var(--danger) !important;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 768px) {
+    .metric-value {
+        font-size: 1.4rem;
+    }
+
+    .card-nova {
+        border-radius: 9px;
+    }
+}

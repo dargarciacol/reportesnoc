@@ -1,0 +1,117 @@
+<div class="container-fluid p-0">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0 text-main">Detection Engine (Rules Lab)</h2>
+        <button class="btn btn-primary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#createRuleModal">
+            <i class="bi bi-plus-square-dotted me-1"></i> Author New Rule
+        </button>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+                <div class="text-muted small text-uppercase fw-semibold">Active Rules</div>
+                <div class="fs-3 fw-bold text-success mt-1" id="stat-active-rules">0</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+                <div class="text-muted small text-uppercase fw-semibold">Disabled Rules</div>
+                <div class="fs-3 fw-bold text-secondary mt-1" id="stat-disabled-rules">0</div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+                <div class="text-muted small text-uppercase fw-semibold">Engine Status</div>
+                <div class="d-flex align-items-center mt-1">
+                    <div class="spinner-grow spinner-grow-sm text-success me-2" role="status"></div>
+                    <span class="fs-5 fw-bold text-main">Processing Telemetry</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card bg-surface border-panel mb-4 rounded-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <input type="text" class="form-control bg-main border-panel text-main" placeholder="Search by rule name or MITRE technique..." id="search-rules">
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select bg-main border-panel text-main" id="filter-rule-status">
+                        <option value="">All States</option>
+                        <option value="Active">Active</option>
+                        <option value="Disabled">Disabled</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card bg-surface border-panel h-100 rounded-3">
+        <div class="table-responsive">
+            <table class="table table-dark table-hover mb-0 align-middle" style="--bs-table-bg: var(--bg-surface);">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">Status</th>
+                        <th>Rule Name</th>
+                        <th>Category</th>
+                        <th>MITRE ATT&CK</th>
+                        <th>Severity</th>
+                        <th class="text-center">Hits (24h)</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="table-rules-body">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="createRuleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bg-surface border-panel text-main">
+            <div class="modal-header border-panel">
+                <h5 class="modal-title fw-bold text-primary-nova">Author Detection Rule (Sigma Format)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createRuleForm">
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label text-muted">Rule Title</label>
+                            <input type="text" class="form-control bg-main border-panel text-main" required placeholder="e.g., Suspicious Scheduled Task Creation">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-muted">Severity</label>
+                            <select class="form-select bg-main border-panel text-main" required>
+                                <option value="Critical">Critical</option>
+                                <option value="High">High</option>
+                                <option value="Medium" selected>Medium</option>
+                                <option value="Low">Low</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-muted">MITRE ATT&CK Technique ID</label>
+                        <input type="text" class="form-control bg-main border-panel text-main" placeholder="e.g., T1053">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Detection Logic (YAML/Sigma)</label>
+                        <textarea class="form-control bg-main border-panel text-main" rows="8" style="font-family: monospace; font-size: 0.9rem;" required placeholder="logsource:&#10;    category: process_creation&#10;    product: windows&#10;detection:&#10;    selection:&#10;        CommandLine|contains: 'schtasks /create'&#10;    condition: selection"></textarea>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mt-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="ruleActiveSwitch" checked>
+                            <label class="form-check-label text-muted" for="ruleActiveSwitch">Enable immediately</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary fw-bold">Deploy to Engine</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

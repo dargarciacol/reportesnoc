@@ -1,0 +1,77 @@
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+}
+
+.login-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--bg-panel);
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+    width: 100%;
+    max-width: 400px;
+    padding: 2.5rem;
+}
+
+.form-control {
+    background-color: var(--bg-main);
+    border: 1px solid var(--bg-panel);
+    color: var(--text-main);
+    transition: all 0.2s ease;
+}
+
+.form-control:focus {
+    background-color: var(--bg-main);
+    border-color: var(--primary);
+    color: var(--text-main);
+    box-shadow: 0 0 0 0.25rem rgba(139, 92, 246, 0.25);
+}
+
+.form-control::placeholder {
+    color: var(--text-muted);
+    opacity: 0.75;
+}
+
+.btn-primary {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: #FFFFFF;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+    background-color: #7541E8;
+    border-color: #7541E8;
+    color: #FFFFFF;
+    box-shadow: 0 0 18px rgba(139, 92, 246, 0.35);
+}
+
+.brand-title {
+    color: var(--primary);
+    letter-spacing: 2px;
+    font-weight: bold;
+    text-shadow: 0 0 15px rgba(139, 92, 246, 0.35);
+}
+
+.login-subtitle {
+    color: var(--text-muted);
+}
+
+.login-accent {
+    color: var(--secondary);
+}
+
+.login-card .form-label {
+    color: var(--text-main);
+}
+
+.login-card .form-control:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

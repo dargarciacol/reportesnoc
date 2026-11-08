@@ -1,0 +1,216 @@
+
+:root {
+    /* BACKGROUNDS */
+    --bg-main: #0B0D19;
+    --bg-surface: #121629;
+    --bg-panel: #202943;
+
+    /* BRAND COLORS */
+    --primary: #8B5CF6;
+    --secondary: #FF6B35;
+    --accent: #22D3A6;
+
+    /* TEXT COLORS */
+    --text-main: #F8FAFC;
+    --text-muted: #A1A9BD;
+
+    /* STATUS */
+    --success: #22D3A6;
+    --warning: #FFB020;
+    --danger: #FF4560;
+    --info: #38BDF8;
+}
+
+/* GLOBAL */
+
+html,
+body {
+    min-height: 100%;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+}
+
+body {
+    margin: 0;
+}
+
+/* GLOBAL TYPOGRAPHY */
+
+h1, h2, h3, h4, h5, h6,
+p, label, span, strong, small,
+li, th, td {
+    color: var(--text-main);
+}
+
+/* BOOTSTRAP TEXT OVERRIDES */
+
+.text-dark {
+    color: var(--text-main) !important;
+}
+
+.text-body {
+    color: var(--text-main) !important;
+}
+
+.text-muted,
+.text-secondary {
+    color: var(--text-muted) !important;
+}
+
+.text-white {
+    color: #FFFFFF !important;
+}
+
+/* MAIN LAYOUT */
+
+.wrapper {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 260px;
+    min-width: 260px;
+    background-color: var(--bg-surface);
+    border-right: 1px solid var(--bg-panel);
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--bg-panel);
+}
+
+.sidebar-nav {
+    padding: 1rem 0;
+    overflow-y: auto;
+    flex-grow: 1;
+}
+
+.nav-link {
+    color: var(--text-muted);
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.nav-link:hover,
+.nav-link.active {
+    color: var(--primary);
+    background-color: rgba(139, 92, 246, 0.13);
+    border-right: 3px solid var(--primary);
+}
+
+.main-panel {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow-y: auto;
+}
+
+.topbar {
+    min-height: 70px;
+    background-color: var(--bg-surface);
+    border-bottom: 1px solid var(--bg-panel);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 2rem;
+}
+
+/* BADGES */
+
+.badge-role {
+    background-color: rgba(255, 107, 53, 0.15);
+    color: var(--secondary) !important;
+    border: 1px solid var(--secondary);
+    font-size: 0.75rem;
+    padding: 4px 8px;
+}
+
+/* BACKGROUNDS */
+
+.bg-surface {
+    background-color: var(--bg-surface) !important;
+}
+
+.bg-main {
+    background-color: var(--bg-main) !important;
+}
+
+.bg-panel {
+    background-color: var(--bg-panel) !important;
+}
+
+/* BORDERS */
+
+.border-panel {
+    border: 1px solid var(--bg-panel) !important;
+}
+
+/* NOVA TEXT UTILITIES */
+
+.text-primary-nova {
+    color: var(--primary) !important;
+}
+
+.text-main {
+    color: var(--text-main) !important;
+}
+
+.text-secondary-nova {
+    color: var(--secondary) !important;
+}
+
+.text-success-nova {
+    color: var(--success) !important;
+}
+
+.text-muted-nova {
+    color: var(--text-muted) !important;
+}
+
+/* BUTTONS */
+
+.btn-nova {
+    background: var(--primary);
+    color: #FFFFFF !important;
+    border: 1px solid var(--primary);
+    transition: all 0.2s ease;
+}
+
+.btn-nova:hover {
+    background: #7541E8;
+    color: #FFFFFF !important;
+    box-shadow: 0 0 18px rgba(139, 92, 246, 0.35);
+}
+
+/* LINKS */
+
+a {
+    color: var(--primary);
+}
+
+a:hover {
+    color: var(--secondary);
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 768px) {
+    .sidebar {
+        width: 260px;
+    }
+
+    .topbar {
+        padding: 0 1rem;
+    }
+}
