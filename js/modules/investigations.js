@@ -1588,71 +1588,72 @@
     // REPORT
     // =========================================================
 
-    async function generateIncidentReport() {
-        if (!isActive || isGeneratingReport) {
-            return;
+   async function generateIncidentReport() {
+    if (!isActive || isGeneratingReport) {
+        return;
+    }
+
+    const button = getElement(
+        'btn-generate-investigation-report'
+    );
+
+    // Ruta del PDF dentro del frontend.
+    const reportUrl =
+        './assets/img/%F0%9F%93%84%20INFORME%20DE%20SEGURIDAD%20SOC%20L2%20-%20NOVA%20SIEM.pdf';
+
+    isGeneratingReport = true;
+
+    if (button) {
+        button.disabled = true;
+    }
+
+    try {
+        const response = await fetch(reportUrl);
+
+        if (!response.ok) {
+            throw new Error(
+                `No se pudo encontrar el informe. HTTP ${response.status}`
+            );
         }
 
-        const incidentId = getIncidentId();
+        const blob = await response.blob();
 
-        if (!incidentId) {
-            window.alert('No incident selected.');
-            return;
-        }
+        const downloadUrl = URL.createObjectURL(blob);
 
-        const button = getElement(
-            'btn-generate-investigation-report'
+        const link = document.createElement('a');
+
+        link.href = downloadUrl;
+
+        link.download =
+            'INFORME DE SEGURIDAD SOC L2 - NOVA SIEM.pdf';
+
+        document.body.appendChild(link);
+
+        link.click();
+
+        link.remove();
+
+        URL.revokeObjectURL(downloadUrl);
+
+    } catch (error) {
+        console.error(
+            'Error al descargar el informe:',
+            error
         );
 
-        isGeneratingReport = true;
+        window.alert(
+            error.message ||
+            'No fue posible descargar el informe.'
+        );
 
-        if (button) {
-            button.disabled = true;
-        }
+    } finally {
+        isGeneratingReport = false;
 
-        try {
-            const response = await window.HttpClient.post(
-                window.ENDPOINTS.REPORTS.GENERATE,
-                {
-                    type: 'Incident Summary',
-                    format: 'PDF',
-                    incidentId
-                }
-            );
-
-            if (!isActive) return;
-
-            if (!response?.data) {
-                throw new Error(
-                    'Invalid report response.'
-                );
-            }
-
-            window.alert(
-                'Report request completed successfully.'
-            );
-
-        } catch (error) {
-            if (!isActive) return;
-
-            console.error(
-                'Report generation error:',
-                error
-            );
-
-            window.alert(
-                error.message ||
-                    'Could not generate report.'
-            );
-
-        } finally {
-            isGeneratingReport = false;
-
-            if (button && isActive) {
-                button.disabled = false;
-            }
+        if (button && isActive) {
+            button.disabled = false;
         }
     }
+}
 
     // =========================================================
     // EVENT HANDLERS
