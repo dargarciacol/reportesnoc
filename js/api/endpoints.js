@@ -6,7 +6,18 @@
     // CONFIGURACIÓN BASE
     // ==========================================
 
-    const API_BASE_URL = 'https://backend-siem.onrender.com/api/v1';
+    // Por defecto apunta al backend desplegado en Render. Para desarrollo local
+    // (o cambiar de entorno) basta con agregar en el <head> de index.html y app.html:
+    //   <meta name="nova-api-base-url" content="http://localhost:8080/api/v1">
+    const DEFAULT_API_BASE_URL = 'https://backend-siem.onrender.com/api/v1';
+
+    const configuredBaseUrl = document
+        .querySelector('meta[name="nova-api-base-url"]')
+        ?.getAttribute('content')
+        ?.trim()
+        .replace(/\/+$/, '');
+
+    const API_BASE_URL = configuredBaseUrl || DEFAULT_API_BASE_URL;
 
     // ==========================================
     // VALIDACIÓN DE IDENTIFICADORES
@@ -111,6 +122,12 @@
 
             BY_INCIDENT: (incidentId) =>
                 `${API_BASE_URL}/investigations/incident/${validateId(incidentId, 'Incident ID')}`,
+
+            GRAPH: (id) =>
+                `${API_BASE_URL}/investigations/${validateId(id, 'Investigation ID')}/graph`,
+
+            TIMELINE: (id) =>
+                `${API_BASE_URL}/investigations/${validateId(id, 'Investigation ID')}/timeline`,
 
             SUBMIT_VERDICT: (id) =>
                 `${API_BASE_URL}/investigations/${validateId(id, 'Investigation ID')}/verdict`

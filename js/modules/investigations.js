@@ -131,6 +131,9 @@
     // API HELPERS
     // =========================================================
 
+    let currentGraph = null;
+    let currentTimeline = [];
+
     async function getApiData(url) {
         const response = await window.HttpClient.get(url);
 
@@ -334,6 +337,22 @@
             // eventos y alertas relacionados.
             currentEvents = [];
             currentAlerts = [];
+
+            // Motor gráfico y línea de tiempo desde el backend (no fatal si fallan).
+            currentGraph = null;
+            currentTimeline = [];
+            try {
+                [currentGraph, currentTimeline] = await Promise.all([
+                    getApiData(window.ENDPOINTS.INVESTIGATIONS.GRAPH(investigation.id)),
+                    getApiData(window.ENDPOINTS.INVESTIGATIONS.TIMELINE(investigation.id))
+                ]);
+            } catch (graphError) {
+                console.error('Graph/timeline loading error:', graphError);
+            }
+
+            if (!isActive || currentRequest !== requestVersion) {
+                return;
+            }
 
             renderInvestigation();
 
@@ -652,6 +671,19 @@
 
         if (!timelineBody) return;
 
+        if (currentTimeline?.length) {
+            timelineBody.innerHTML = currentTimeline.map(item => `
+                <tr>
+                    <td>${escapeHTML(formatDate(item.timestamp))}</td>
+                    <td>${escapeHTML(item.category || '--')}</td>
+                    <td>${escapeHTML(item.title || '--')}</td>
+                    <td><span class="badge bg-secondary">${escapeHTML(item.source || '--')}</span></td>
+                    <td>${escapeHTML(item.description || '--')}</td>
+                </tr>
+            `).join('');
+            return;
+        }
+
         if (!currentEvents.length) {
             timelineBody.innerHTML = `
                 <tr>
@@ -733,30 +765,55 @@
             return;
         }
 
-        // Solo se representa el incidente recuperado del backend.
-        // No se inventan relaciones con alertas o eventos.
+        const colors = {
+            INCIDENT: '#EF4444',
+            INVESTIGATION: '#3B82F6',
+            IOC: '#F59E0B',
+            IOC_MALICIOUS: '#DC2626',
+            EVIDENCE: '#10B981'
+        };
 
-        const incidentId = `incident-${currentIncident.id}`;
+        let elements;
+
+        if (currentGraph?.nodes?.length) {
+            elements = [
+                ...currentGraph.nodes.map(n => ({
+                    data: {
+                        id: String(n.id),
+                        label: n.label || n.group,
+                        type: n.group,
+                        color: colors[n.group] || '#94A3B8'
+                    }
+                })),
+                ...(currentGraph.edges || []).map((e, i) => ({
+                    data: {
+                        id: `edge-${i}`,
+                        source: String(e.source),
+                        target: String(e.target),
+                        label: e.relationship
+                    }
+                }))
+            ];
+        } else {
+            elements = [{
+                data: {
+                    id: `incident-${currentIncident.id}`,
+                    label: currentIncident.title || 'Incident',
+                    type: 'INCIDENT',
+                    color: colors.INCIDENT
+                }
+            }];
+        }
 
         cy = window.cytoscape({
             container,
-
-            elements: [
-                {
-                    data: {
-                        id: incidentId,
-                        label: currentIncident.title || 'Incident',
-                        type: 'incident'
-                    }
-                }
-            ],
-
+            elements,
             style: [
                 {
                     selector: 'node',
                     style: {
                         'label': 'data(label)',
-                        'background-color': '#EF4444',
+                        'background-color': 'data(color)',
                         'color': '#F8FAFC',
                         'font-size': '11px',
                         'text-wrap': 'wrap',
@@ -764,20 +821,33 @@
                         'text-valign': 'bottom',
                         'text-halign': 'center',
                         'text-margin-y': 10,
-                        'width': 55,
-                        'height': 55,
+                        'width': 45,
+                        'height': 45,
                         'border-width': 2,
                         'border-color': '#DFE8EC'
                     }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 2,
+                        'line-color': '#64748B',
+                        'target-arrow-color': '#64748B',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        'label': 'data(label)',
+                        'font-size': '9px',
+                        'color': '#94A3B8',
+                        'text-rotation': 'autorotate'
+                    }
                 }
             ],
-
-            layout: {
-                name: 'grid',
-                animate: true,
-                padding: 30
-            }
+            layout: { name: 'cose', animate: false, padding: 30 }
         });
+
+        if (currentGraph?.nodes?.length) {
+            return;
+        }
 
         const graphMessage = document.createElement('div');
 

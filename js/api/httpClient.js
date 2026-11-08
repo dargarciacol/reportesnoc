@@ -259,6 +259,26 @@
 
                 if (!response.ok) {
 
+                    // Sesión expirada o token inválido: limpiar y volver al login.
+                    // (No aplica al propio login, donde un 401 significa
+                    // credenciales incorrectas.)
+                    if (
+                        response.status === 401 &&
+                        !url.includes('/auth/login') &&
+                        sessionStorage.getItem(TOKEN_KEY)
+                    ) {
+                        sessionStorage.removeItem(TOKEN_KEY);
+                        sessionStorage.removeItem('nova_user');
+                        sessionStorage.removeItem('nova_selected_incident_id');
+
+                        if (
+                            !window.location.pathname.endsWith('/index.html') &&
+                            !window.location.pathname.endsWith('/')
+                        ) {
+                            window.location.replace('index.html');
+                        }
+                    }
+
                     const message = getErrorMessage(
                         responseData,
                         response.status
