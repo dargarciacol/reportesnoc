@@ -31,6 +31,9 @@
     let isActive = true;
     let requestVersion = 0;
 
+    let currentGraph = null;
+    let currentTimeline = [];
+
     const notebook = {
         facts: [],
         inferences: [],
@@ -131,9 +134,6 @@
     // API HELPERS
     // =========================================================
 
-    let currentGraph = null;
-    let currentTimeline = [];
-
     async function getApiData(url) {
         const response = await window.HttpClient.get(url);
 
@@ -162,6 +162,33 @@
         };
     }
 
+    // Recupera información básica del incidente desde el grafo.
+    // GraphAnalysisService devuelve el nodo con group INCIDENT
+    // y sus metadatos de severity y status.
+
+    function recoverIncidentFromGraph(graph) {
+        if (!graph || !Array.isArray(graph.nodes)) {
+            return null;
+        }
+
+        const incidentNode = graph.nodes.find(
+            node => normalize(node.group) === 'INCIDENT'
+        );
+
+        if (!incidentNode?.id) {
+            return null;
+        }
+
+        const metadata = incidentNode.metadata || {};
+
+        return normalizeIncident({
+            id: incidentNode.id,
+            title: incidentNode.label || 'Security incident',
+            severity: metadata.severity,
+            status: metadata.status
+        });
+    }
+
     // =========================================================
     // ANÁLISIS DE LA INVESTIGACIÓN
     // =========================================================
@@ -179,6 +206,7 @@
         const confidence = Number(investigation.confidenceScore);
 
         const hasVerdict = Boolean(verdict);
+
         const hasConfidence =
             investigation.confidenceScore !== null &&
             investigation.confidenceScore !== undefined &&
@@ -192,7 +220,11 @@
 
         const analysis = {
             investigationId: investigation.id,
-            incidentId: incident.id || investigation.incidentId || getIncidentId(),
+
+            incidentId:
+                incident.id ||
+                investigation.incidentId ||
+                getIncidentId(),
 
             incidentSeverity: normalize(incident.severity) || null,
             incidentStatus: normalize(incident.status) || null,
@@ -200,7 +232,9 @@
             verdict: verdict || null,
             hasVerdict,
 
-            confidenceScore: hasConfidence ? confidence : null,
+            confidenceScore: hasConfidence
+                ? confidence
+                : null,
 
             confidenceLevel: !hasConfidence
                 ? 'NOT_SET'
@@ -220,6 +254,7 @@
                 facts: notebook.facts.length,
                 inferences: notebook.inferences.length,
                 pending: pendingNotebookEntries,
+
                 total:
                     notebook.facts.length +
                     notebook.inferences.length +
@@ -229,8 +264,19 @@
             evidence: {
                 relatedEvents: currentEvents.length,
                 relatedAlerts: currentAlerts.length,
-                available: currentEvents.length > 0 ||
+
+                available:
+                    currentEvents.length > 0 ||
                     currentAlerts.length > 0
+            },
+
+            graph: {
+                nodes: currentGraph?.nodes?.length || 0,
+                edges: currentGraph?.edges?.length || 0
+            },
+
+            timeline: {
+                entries: currentTimeline.length
             },
 
             completeness: {
@@ -308,8 +354,9 @@
         const currentRequest = ++requestVersion;
 
         try {
-            // ENDPOINTS ya realiza la codificación del identificador.
-            // No debemos aplicar encodeURIComponent dos veces.
+            // La función del endpoint ya codifica el identificador.
+            // No aplicar encodeURIComponent nuevamente.
+
             const investigation = await getApiData(
                 window.ENDPOINTS.INVESTIGATIONS.BY_INCIDENT(
                     incidentId
@@ -328,49 +375,124 @@
 
             currentInvestigation = investigation;
 
-            // La investigación puede incluir el incidente asociado.
             currentIncident = normalizeIncident(
                 investigation.incident
             );
 
-            // No hay endpoints confirmados para recuperar
-            // eventos y alertas relacionados.
             currentEvents = [];
             currentAlerts = [];
 
-            // Motor gráfico y línea de tiempo desde el backend (no fatal si fallan).
+            // =================================================
+            // CARGA INDEPENDIENTE DEL GRAFO Y TIMELINE
+            // =================================================
+
             currentGraph = null;
             currentTimeline = [];
-            try {
-                [currentGraph, currentTimeline] = await Promise.all([
-                    getApiData(window.ENDPOINTS.INVESTIGATIONS.GRAPH(investigation.id)),
-                    getApiData(window.ENDPOINTS.INVESTIGATIONS.TIMELINE(investigation.id))
+
+            const graphUrl =
+                window.ENDPOINTS.INVESTIGATIONS.GRAPH(
+                    investigation.id
+                );
+
+            const timelineUrl =
+                window.ENDPOINTS.INVESTIGATIONS.TIMELINE(
+                    investigation.id
+                );
+
+            const [graphResult, timelineResult] =
+                await Promise.allSettled([
+                    getApiData(graphUrl),
+                    getApiData(timelineUrl)
                 ]);
-            } catch (graphError) {
-                console.error('Graph/timeline loading error:', graphError);
+
+            if (!isActive || currentRequest !== requestVersion) {
+                return;
+            }
+
+            // ---------------------------------------------
+            // RESULTADO DEL GRAFO
+            // ---------------------------------------------
+
+            if (graphResult.status === 'fulfilled') {
+                const graphData = graphResult.value;
+
+                if (Array.isArray(graphData?.nodes)) {
+                    currentGraph = {
+                        nodes: graphData.nodes,
+                        edges: Array.isArray(graphData.edges)
+                            ? graphData.edges
+                            : []
+                    };
+                } else {
+                    console.error(
+                        'Investigations: invalid graph response.',
+                        graphData
+                    );
+                }
+            } else {
+                console.error(
+                    'Investigations: graph loading failed.',
+                    graphResult.reason
+                );
+            }
+
+            // Si la respuesta principal no incluyó el incidente,
+            // recuperar sus datos básicos desde el nodo del grafo.
+
+            if (!currentIncident && currentGraph) {
+                currentIncident =
+                    recoverIncidentFromGraph(currentGraph);
+            }
+
+            // ---------------------------------------------
+            // RESULTADO DE LA LÍNEA DE TIEMPO
+            // ---------------------------------------------
+
+            if (timelineResult.status === 'fulfilled') {
+                if (Array.isArray(timelineResult.value)) {
+                    currentTimeline = timelineResult.value;
+                } else {
+                    console.error(
+                        'Investigations: invalid timeline response.',
+                        timelineResult.value
+                    );
+                }
+            } else {
+                console.error(
+                    'Investigations: timeline loading failed.',
+                    timelineResult.reason
+                );
             }
 
             if (!isActive || currentRequest !== requestVersion) {
                 return;
             }
 
-            renderInvestigation();
+            // =================================================
+            // RENDERIZADO
+            // =================================================
 
             loadNotebook();
 
             analyzeInvestigation();
 
+            renderInvestigation();
             renderNotebook();
             renderTimeline();
             renderEvidenceSummary();
             renderGraph();
+
+            refreshInvestigationRelated();
 
         } catch (error) {
             if (!isActive || currentRequest !== requestVersion) {
                 return;
             }
 
-            console.error('Investigation loading error:', error);
+            console.error(
+                'Investigation loading error:',
+                error
+            );
 
             showMessage(
                 getElement('cy-container'),
@@ -429,7 +551,9 @@
             getElement('investigation-verdict'),
             currentInvestigation.verdict
                 ? translate(
-                    normalize(currentInvestigation.verdict).toLowerCase(),
+                    normalize(
+                        currentInvestigation.verdict
+                    ).toLowerCase(),
                     currentInvestigation.verdict
                 )
                 : '--'
@@ -447,7 +571,9 @@
             currentInvestigation.recommendedAction
         );
 
-        const confidenceInput = getElement('verdict-confidence');
+        const confidenceInput = getElement(
+            'verdict-confidence'
+        );
 
         if (
             confidenceInput &&
@@ -462,15 +588,23 @@
             );
         }
 
-        const verdictInput = getElement('verdict-decision');
+        const verdictInput = getElement(
+            'verdict-decision'
+        );
 
         if (verdictInput && currentInvestigation.verdict) {
-            verdictInput.value = currentInvestigation.verdict;
+            verdictInput.value =
+                currentInvestigation.verdict;
         }
 
-        const actionInput = getElement('verdict-required-action');
+        const actionInput = getElement(
+            'verdict-required-action'
+        );
 
-        if (actionInput && currentInvestigation.recommendedAction) {
+        if (
+            actionInput &&
+            currentInvestigation.recommendedAction
+        ) {
             actionInput.value =
                 currentInvestigation.recommendedAction;
         }
@@ -493,7 +627,10 @@
                 <div class="col-6 col-lg-3">
                     <div class="card bg-surface border-panel p-3 h-100">
                         <div class="text-muted small">
-                            ${translate('investigationProgress', 'Investigation completeness')}
+                            ${translate(
+                                'investigationProgress',
+                                'Investigation completeness'
+                            )}
                         </div>
 
                         <div class="fs-3 fw-bold">
@@ -563,7 +700,9 @@
         const raw = event.rawData || {};
 
         const severity = normalize(event.severity);
-        const action = String(event.action || '').toLowerCase();
+        const action = String(
+            event.action || ''
+        ).toLowerCase();
 
         const description = String(
             raw.event_description || event.eventType || ''
@@ -571,8 +710,13 @@
 
         const findings = [];
 
-        if (severity === 'CRITICAL' || severity === 'HIGH') {
-            findings.push('High-priority security event');
+        if (
+            severity === 'CRITICAL' ||
+            severity === 'HIGH'
+        ) {
+            findings.push(
+                'High-priority security event'
+            );
         }
 
         if (
@@ -588,23 +732,31 @@
         if (
             description.includes('powershell') ||
             String(raw.process_commandline || '')
-                .toLowerCase().includes('powershell')
+                .toLowerCase()
+                .includes('powershell')
         ) {
-            findings.push('PowerShell execution indicator');
+            findings.push(
+                'PowerShell execution indicator'
+            );
         }
 
         if (
             description.includes('blocked') ||
             action.includes('blocked')
         ) {
-            findings.push('Blocking action recorded');
+            findings.push(
+                'Blocking action recorded'
+            );
         }
 
         return findings;
     }
 
     function renderEvidenceSummary() {
-        if (!currentEvents.length && !currentAlerts.length) {
+        if (
+            !currentEvents.length &&
+            !currentAlerts.length
+        ) {
             renderRelatedEvidenceUnavailable();
             return;
         }
@@ -614,11 +766,13 @@
         if (!container) return;
 
         const critical = currentEvents.filter(
-            event => normalize(event.severity) === 'CRITICAL'
+            event =>
+                normalize(event.severity) === 'CRITICAL'
         ).length;
 
         const high = currentEvents.filter(
-            event => normalize(event.severity) === 'HIGH'
+            event =>
+                normalize(event.severity) === 'HIGH'
         ).length;
 
         const findings = currentEvents.reduce(
@@ -632,29 +786,45 @@
 
                 <div class="col-6 col-lg-3">
                     <div class="card bg-surface border-panel p-3">
-                        <div class="text-muted small">Related events</div>
-                        <div class="fs-3 fw-bold">${currentEvents.length}</div>
+                        <div class="text-muted small">
+                            Related events
+                        </div>
+                        <div class="fs-3 fw-bold">
+                            ${currentEvents.length}
+                        </div>
                     </div>
                 </div>
 
                 <div class="col-6 col-lg-3">
                     <div class="card bg-surface border-panel p-3">
-                        <div class="text-muted small">Critical events</div>
-                        <div class="fs-3 fw-bold text-danger">${critical}</div>
+                        <div class="text-muted small">
+                            Critical events
+                        </div>
+                        <div class="fs-3 fw-bold text-danger">
+                            ${critical}
+                        </div>
                     </div>
                 </div>
 
                 <div class="col-6 col-lg-3">
                     <div class="card bg-surface border-panel p-3">
-                        <div class="text-muted small">High events</div>
-                        <div class="fs-3 fw-bold text-warning">${high}</div>
+                        <div class="text-muted small">
+                            High events
+                        </div>
+                        <div class="fs-3 fw-bold text-warning">
+                            ${high}
+                        </div>
                     </div>
                 </div>
 
                 <div class="col-6 col-lg-3">
                     <div class="card bg-surface border-panel p-3">
-                        <div class="text-muted small">Evidence indicators</div>
-                        <div class="fs-3 fw-bold">${findings}</div>
+                        <div class="text-muted small">
+                            Evidence indicators
+                        </div>
+                        <div class="fs-3 fw-bold">
+                            ${findings}
+                        </div>
                     </div>
                 </div>
 
@@ -671,27 +841,17 @@
 
         if (!timelineBody) return;
 
-        if (currentTimeline?.length) {
-            timelineBody.innerHTML = currentTimeline.map(item => `
-                <tr>
-                    <td>${escapeHTML(formatDate(item.timestamp))}</td>
-                    <td>${escapeHTML(item.category || '--')}</td>
-                    <td>${escapeHTML(item.title || '--')}</td>
-                    <td><span class="badge bg-secondary">${escapeHTML(item.source || '--')}</span></td>
-                    <td>${escapeHTML(item.description || '--')}</td>
-                </tr>
-            `).join('');
-            return;
-        }
-
-        if (!currentEvents.length) {
+        if (
+            !Array.isArray(currentTimeline) ||
+            !currentTimeline.length
+        ) {
             timelineBody.innerHTML = `
                 <tr>
-                    <td colspan="5"
+                    <td colspan="4"
                         class="text-center text-muted py-4">
                         ${translate(
                             'noEvidenceAvailable',
-                            'No related event evidence is available through the current API.'
+                            'No hay actividad disponible en la línea de tiempo.'
                         )}
                     </td>
                 </tr>
@@ -699,31 +859,47 @@
             return;
         }
 
-        const sortedEvents = [...currentEvents].sort(
-            (a, b) =>
-                new Date(a.timestamp || 0) -
-                new Date(b.timestamp || 0)
-        );
+        timelineBody.innerHTML = currentTimeline.map(item => {
+            const eventTitle =
+                item.title ||
+                item.category ||
+                '--';
 
-        timelineBody.innerHTML = sortedEvents.map(event => {
-            const findings = analyzeEvidence(event);
+            const category = item.category || '--';
 
             return `
                 <tr>
-                    <td>${escapeHTML(formatDate(event.timestamp))}</td>
+                    <td class="text-nowrap">
+                        ${escapeHTML(
+                            formatDate(item.timestamp)
+                        )}
+                    </td>
 
-                    <td>${escapeHTML(event.eventType || '--')}</td>
+                    <td>
+                        <div class="fw-semibold">
+                            ${escapeHTML(eventTitle)}
+                        </div>
 
-                    <td>${escapeHTML(event.action || '--')}</td>
+                        <small class="text-muted">
+                            ${escapeHTML(category)}
+                        </small>
+
+                        <div class="small text-muted">
+                            ${escapeHTML(item.description || '')}
+                        </div>
+                    </td>
 
                     <td>
                         <span class="badge bg-secondary">
-                            ${escapeHTML(normalize(event.severity) || '--')}
+                            ${escapeHTML(item.source || '--')}
                         </span>
                     </td>
 
                     <td>
-                        ${escapeHTML(findings.join(', ') || '--')}
+                        <span class="text-muted small"
+                              title="El TimelineDTO no proporciona severidad">
+                            --
+                        </span>
                     </td>
                 </tr>
             `;
@@ -744,22 +920,18 @@
             cy = null;
         }
 
-        // Evita duplicar el mensaje al volver a renderizar el gráfico.
-        getElement('investigation-graph-message')?.remove();
+        getElement(
+            'investigation-graph-message'
+        )?.remove();
+
+        getElement(
+            'investigation-graph-loading'
+        )?.remove();
 
         if (typeof window.cytoscape !== 'function') {
             container.innerHTML = `
                 <div class="text-center text-muted p-4">
-                    Cytoscape.js is not loaded.
-                </div>
-            `;
-            return;
-        }
-
-        if (!currentIncident?.id) {
-            container.innerHTML = `
-                <div class="text-center text-muted p-4">
-                    No incident data available.
+                    Cytoscape.js no está disponible.
                 </div>
             `;
             return;
@@ -770,97 +942,279 @@
             INVESTIGATION: '#3B82F6',
             IOC: '#F59E0B',
             IOC_MALICIOUS: '#DC2626',
-            EVIDENCE: '#10B981'
+            EVIDENCE: '#10B981',
+            ALERT: '#F97316',
+            EVENT: '#8B5CF6'
         };
 
-        let elements;
+        let elements = [];
+        let hasBackendGraph = false;
 
-        if (currentGraph?.nodes?.length) {
+        // -----------------------------------------------------
+        // GRAFO RECIBIDO DEL BACKEND
+        // -----------------------------------------------------
+
+        if (
+            currentGraph &&
+            Array.isArray(currentGraph.nodes) &&
+            currentGraph.nodes.length
+        ) {
+            const validNodes = currentGraph.nodes.filter(
+                node =>
+                    node &&
+                    node.id !== null &&
+                    node.id !== undefined &&
+                    String(node.id).trim() !== ''
+            );
+
+            const nodeIds = new Set(
+                validNodes.map(node => String(node.id))
+            );
+
+            const graphNodes = validNodes.map(node => {
+                const metadata = node.metadata || {};
+                const group = normalize(node.group);
+
+                return {
+                    data: {
+                        id: String(node.id),
+
+                        label:
+                            node.label ||
+                            node.group ||
+                            'Entity',
+
+                        type: group,
+
+                        color:
+                            colors[group] ||
+                            '#94A3B8',
+
+                        metadata,
+
+                        // Campos útiles para inspección y estilos.
+                        group: node.group || null,
+                        iocType: metadata.type || null,
+                        malicious: metadata.malicious === true,
+                        threatContext: metadata.context || null,
+                        description: metadata.description || null,
+                        reference: metadata.reference || null,
+                        severity: metadata.severity || null,
+                        status: metadata.status || null,
+                        verdict: metadata.verdict || null
+                    }
+                };
+            });
+
+            const graphEdges = (
+                Array.isArray(currentGraph.edges)
+                    ? currentGraph.edges
+                    : []
+            )
+                .filter(edge =>
+                    edge &&
+                    edge.source !== null &&
+                    edge.source !== undefined &&
+                    edge.target !== null &&
+                    edge.target !== undefined &&
+                    nodeIds.has(String(edge.source)) &&
+                    nodeIds.has(String(edge.target))
+                )
+                .map((edge, index) => ({
+                    data: {
+                        id: `graph-edge-${index}`,
+                        source: String(edge.source),
+                        target: String(edge.target),
+                        label: edge.relationship || ''
+                    }
+                }));
+
             elements = [
-                ...currentGraph.nodes.map(n => ({
-                    data: {
-                        id: String(n.id),
-                        label: n.label || n.group,
-                        type: n.group,
-                        color: colors[n.group] || '#94A3B8'
-                    }
-                })),
-                ...(currentGraph.edges || []).map((e, i) => ({
-                    data: {
-                        id: `edge-${i}`,
-                        source: String(e.source),
-                        target: String(e.target),
-                        label: e.relationship
-                    }
-                }))
+                ...graphNodes,
+                ...graphEdges
             ];
-        } else {
-            elements = [{
-                data: {
-                    id: `incident-${currentIncident.id}`,
-                    label: currentIncident.title || 'Incident',
-                    type: 'INCIDENT',
-                    color: colors.INCIDENT
-                }
-            }];
+
+            hasBackendGraph = graphNodes.length > 0;
         }
 
-        cy = window.cytoscape({
-            container,
-            elements,
-            style: [
-                {
-                    selector: 'node',
-                    style: {
-                        'label': 'data(label)',
-                        'background-color': 'data(color)',
-                        'color': '#F8FAFC',
-                        'font-size': '11px',
-                        'text-wrap': 'wrap',
-                        'text-max-width': 120,
-                        'text-valign': 'bottom',
-                        'text-halign': 'center',
-                        'text-margin-y': 10,
-                        'width': 45,
-                        'height': 45,
-                        'border-width': 2,
-                        'border-color': '#DFE8EC'
-                    }
-                },
-                {
-                    selector: 'edge',
-                    style: {
-                        'width': 2,
-                        'line-color': '#64748B',
-                        'target-arrow-color': '#64748B',
-                        'target-arrow-shape': 'triangle',
-                        'curve-style': 'bezier',
-                        'label': 'data(label)',
-                        'font-size': '9px',
-                        'color': '#94A3B8',
-                        'text-rotation': 'autorotate'
-                    }
-                }
-            ],
-            layout: { name: 'cose', animate: false, padding: 30 }
-        });
+        // -----------------------------------------------------
+        // FALLBACK SI NO EXISTE UN GRAFO DEL BACKEND
+        // -----------------------------------------------------
 
-        if (currentGraph?.nodes?.length) {
+        if (!hasBackendGraph) {
+            const incident =
+                currentIncident ||
+                recoverIncidentFromGraph(currentGraph);
+
+            if (incident?.id) {
+                elements = [{
+                    data: {
+                        id: `incident-${incident.id}`,
+                        label:
+                            incident.title ||
+                            'Incident',
+
+                        type: 'INCIDENT',
+                        color: colors.INCIDENT,
+                        metadata: {
+                            severity: incident.severity,
+                            status: incident.status
+                        }
+                    }
+                }];
+            }
+        }
+
+        if (!elements.length) {
+            container.innerHTML = `
+                <div class="text-center text-muted p-4">
+                    No hay entidades disponibles para representar.
+                </div>
+            `;
             return;
         }
 
-        const graphMessage = document.createElement('div');
+        // -----------------------------------------------------
+        // INICIALIZAR CYTOSCAPE
+        // -----------------------------------------------------
 
-        graphMessage.id = 'investigation-graph-message';
-        graphMessage.className =
-            'text-center text-muted small mt-2';
+        try {
+            cy = window.cytoscape({
+                container,
+                elements,
 
-        graphMessage.textContent = translate(
-            'graphRelationshipsUnavailable',
-            'Related alert and event relationships are not available through the current API.'
-        );
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'label': 'data(label)',
+                            'background-color': 'data(color)',
+                            'color': '#F8FAFC',
+                            'font-size': '11px',
+                            'text-wrap': 'wrap',
+                            'text-max-width': 120,
+                            'text-valign': 'bottom',
+                            'text-halign': 'center',
+                            'text-margin-y': 10,
+                            'width': 45,
+                            'height': 45,
+                            'border-width': 2,
+                            'border-color': '#DFE8EC'
+                        }
+                    },
+                    {
+                        selector: 'node[type="IOC_MALICIOUS"]',
+                        style: {
+                            'border-width': 4,
+                            'border-color': '#FCA5A5',
+                            'shape': 'diamond'
+                        }
+                    },
+                    {
+                        selector: 'node[type="INCIDENT"]',
+                        style: {
+                            'shape': 'round-rectangle',
+                            'width': 60,
+                            'height': 50
+                        }
+                    },
+                    {
+                        selector: 'node[type="INVESTIGATION"]',
+                        style: {
+                            'shape': 'round-rectangle'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 2,
+                            'line-color': '#64748B',
+                            'target-arrow-color': '#64748B',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier',
+                            'label': 'data(label)',
+                            'font-size': '9px',
+                            'color': '#94A3B8',
+                            'text-rotation': 'autorotate',
+                            'text-background-color': '#0D1326',
+                            'text-background-opacity': 0.8,
+                            'text-background-padding': '2px'
+                        }
+                    },
+                    {
+                        selector: ':selected',
+                        style: {
+                            'border-width': 4,
+                            'border-color': '#38BDF8'
+                        }
+                    }
+                ],
 
-        container.parentElement?.appendChild(graphMessage);
+                layout: {
+                    name: 'cose',
+                    animate: false,
+                    padding: 30
+                }
+            });
+
+            // Permite consultar los metadatos de cada entidad
+            // seleccionándola en el gráfico.
+
+            cy.on('tap', 'node', event => {
+                const node = event.target;
+                const data = node.data();
+                const metadata = data.metadata || {};
+
+                console.info(
+                    'NOVA SIEM | Entidad seleccionada',
+                    {
+                        id: data.id,
+                        label: data.label,
+                        group: data.group,
+                        metadata
+                    }
+                );
+            });
+
+        } catch (error) {
+            console.error(
+                'Investigations: Cytoscape rendering error.',
+                error
+            );
+
+            cy = null;
+
+            container.innerHTML = `
+                <div class="text-center text-danger p-4">
+                    No fue posible representar el gráfico.
+                </div>
+            `;
+
+            return;
+        }
+
+        // -----------------------------------------------------
+        // MENSAJE SI SOLO EXISTE EL NODO DEL INCIDENTE
+        // -----------------------------------------------------
+
+        if (!hasBackendGraph) {
+            const graphMessage = document.createElement('div');
+
+            graphMessage.id =
+                'investigation-graph-message';
+
+            graphMessage.className =
+                'text-center text-muted small mt-2';
+
+            graphMessage.textContent = translate(
+                'graphRelationshipsUnavailable',
+                'No hay relaciones de entidades disponibles desde el backend. Se muestra el incidente como referencia.'
+            );
+
+            container.parentElement?.appendChild(
+                graphMessage
+            );
+        }
     }
 
     // =========================================================
@@ -870,9 +1224,14 @@
     function changeGraphLayout(name) {
         if (!cy) return;
 
-        const supportedLayouts = ['cose', 'grid'];
+        const supportedLayouts = [
+            'cose',
+            'grid'
+        ];
 
-        if (!supportedLayouts.includes(name)) return;
+        if (!supportedLayouts.includes(name)) {
+            return;
+        }
 
         cy.layout({
             name,
@@ -932,7 +1291,10 @@
             }
 
         } catch (error) {
-            console.error('Notebook loading error:', error);
+            console.error(
+                'Notebook loading error:',
+                error
+            );
         }
     }
 
@@ -948,7 +1310,10 @@
             );
 
         } catch (error) {
-            console.error('Notebook saving error:', error);
+            console.error(
+                'Notebook saving error:',
+                error
+            );
         }
     }
 
@@ -961,6 +1326,7 @@
             const empty = document.createElement('li');
 
             empty.className = 'text-muted small';
+
             empty.textContent = translate(
                 'noNotebookEntries',
                 'No entries yet.'
@@ -984,19 +1350,23 @@
             const button = document.createElement('button');
 
             button.type = 'button';
+
             button.className =
                 'btn btn-sm btn-link text-danger p-0';
 
             button.dataset.notebookType = type;
             button.dataset.notebookIndex = String(index);
+
             button.setAttribute(
                 'aria-label',
                 translate('deleteEntry', 'Delete entry')
             );
 
-            button.innerHTML = '<i class="bi bi-trash"></i>';
+            button.innerHTML =
+                '<i class="bi bi-trash"></i>';
 
             li.append(content, button);
+
             element.appendChild(li);
         });
     }
@@ -1030,7 +1400,9 @@
 
         const target = types[type];
 
-        if (!target || !currentInvestigation) return;
+        if (!target || !currentInvestigation) {
+            return;
+        }
 
         const prompts = {
             fact: 'Enter an observed fact:',
@@ -1059,7 +1431,9 @@
     async function submitVerdict(event) {
         event.preventDefault();
 
-        if (!isActive || isSubmittingVerdict) return;
+        if (!isActive || isSubmittingVerdict) {
+            return;
+        }
 
         const investigationId = getInvestigationId();
 
@@ -1121,20 +1495,25 @@
             return;
         }
 
-        // Contrato exacto del backend.
         const payload = {
             verdict,
             confidenceScore,
             recommendedAction
         };
 
-        const button = getElement('btn-submit-verdict');
+        const button = getElement(
+            'btn-submit-verdict'
+        );
 
         isSubmittingVerdict = true;
 
-        if (button) button.disabled = true;
+        if (button) {
+            button.disabled = true;
+        }
 
-        hideMessage(getElement('verdictStatus'));
+        hideMessage(
+            getElement('verdictStatus')
+        );
 
         try {
             const response = await window.HttpClient.post(
@@ -1147,7 +1526,9 @@
             if (!isActive) return;
 
             if (!response?.data?.id) {
-                throw new Error('Invalid verdict response.');
+                throw new Error(
+                    'Invalid verdict response.'
+                );
             }
 
             currentInvestigation = response.data;
@@ -1182,11 +1563,15 @@
         } catch (error) {
             if (!isActive) return;
 
-            console.error('Verdict submission error:', error);
+            console.error(
+                'Verdict submission error:',
+                error
+            );
 
             showMessage(
                 getElement('verdictStatus'),
-                error.message || 'Could not submit verdict.',
+                error.message ||
+                    'Could not submit verdict.',
                 'danger'
             );
 
@@ -1204,7 +1589,9 @@
     // =========================================================
 
     async function generateIncidentReport() {
-        if (!isActive || isGeneratingReport) return;
+        if (!isActive || isGeneratingReport) {
+            return;
+        }
 
         const incidentId = getIncidentId();
 
@@ -1219,7 +1606,9 @@
 
         isGeneratingReport = true;
 
-        if (button) button.disabled = true;
+        if (button) {
+            button.disabled = true;
+        }
 
         try {
             const response = await window.HttpClient.post(
@@ -1234,7 +1623,9 @@
             if (!isActive) return;
 
             if (!response?.data) {
-                throw new Error('Invalid report response.');
+                throw new Error(
+                    'Invalid report response.'
+                );
             }
 
             window.alert(
@@ -1244,10 +1635,14 @@
         } catch (error) {
             if (!isActive) return;
 
-            console.error('Report generation error:', error);
+            console.error(
+                'Report generation error:',
+                error
+            );
 
             window.alert(
-                error.message || 'Could not generate report.'
+                error.message ||
+                    'Could not generate report.'
             );
 
         } finally {
@@ -1263,37 +1658,185 @@
     // EVENT HANDLERS
     // =========================================================
 
+
+    // =========================================================
+    // IOC Y EVIDENCIAS (backend real)
+    // =========================================================
+
+    let currentIocs = [];
+    let currentEvidences = [];
+
+    function setExtraStatus(id, message, type) {
+        const el = getElement(id);
+        if (!el) return;
+        el.className = `small mb-2 text-${type}`;
+        el.textContent = message || '';
+    }
+
+    function renderIocEvidenceLists() {
+        const iocList = getElement('ioc-list');
+        const evList = getElement('evidence-list');
+
+        if (iocList) {
+            iocList.innerHTML = currentIocs.length
+                ? currentIocs.map(i => `
+                    <li class="list-group-item bg-transparent text-main d-flex justify-content-between align-items-start">
+                        <span>
+                            <span class="badge ${i.malicious ? 'bg-danger' : 'bg-secondary'} me-1">${escapeHTML(i.iocType)}</span>
+                            ${escapeHTML(i.value)}
+                            ${i.threatContext ? `<div class="text-muted">${escapeHTML(i.threatContext)}</div>` : ''}
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-danger" data-ioc-delete="${escapeHTML(i.id)}">Eliminar</button>
+                    </li>`).join('')
+                : '<li class="list-group-item bg-transparent text-muted">Sin indicadores registrados.</li>';
+        }
+
+        if (evList) {
+            evList.innerHTML = currentEvidences.length
+                ? currentEvidences.map(e => `
+                    <li class="list-group-item bg-transparent text-main d-flex justify-content-between align-items-start">
+                        <span>
+                            <strong>${escapeHTML(e.evidenceType)}</strong>
+                            ${e.description ? `<div>${escapeHTML(e.description)}</div>` : ''}
+                            ${e.artifactReference ? `<div class="text-muted">${escapeHTML(e.artifactReference)}</div>` : ''}
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-danger" data-evidence-delete="${escapeHTML(e.id)}">Eliminar</button>
+                    </li>`).join('')
+                : '<li class="list-group-item bg-transparent text-muted">Sin evidencias registradas.</li>';
+        }
+    }
+
+    async function refreshInvestigationRelated() {
+        const id = getInvestigationId();
+        if (!id || !isActive) return;
+
+        try {
+            const [iocs, evidences, graph, timeline] = await Promise.all([
+                getApiData(window.ENDPOINTS.INVESTIGATIONS.IOCS(id)),
+                getApiData(window.ENDPOINTS.INVESTIGATIONS.EVIDENCES(id)),
+                getApiData(window.ENDPOINTS.INVESTIGATIONS.GRAPH(id)),
+                getApiData(window.ENDPOINTS.INVESTIGATIONS.TIMELINE(id))
+            ]);
+            if (!isActive) return;
+            currentIocs = iocs || [];
+            currentEvidences = evidences || [];
+            currentGraph = graph;
+            currentTimeline = timeline || [];
+        } catch (error) {
+            console.error('Error al actualizar IOC/evidencias:', error);
+            setExtraStatus('ioc-status', error.message || 'No se pudieron cargar los datos.', 'danger');
+        }
+
+        renderIocEvidenceLists();
+        renderTimeline();
+        renderGraph();
+    }
+
+    async function handleExtrasSubmit(event) {
+        const form = event.target;
+        if (!(form instanceof Element)) return;
+        const id = getInvestigationId();
+
+        if (form.id === 'ioc-form') {
+            event.preventDefault();
+            if (!id) return;
+            try {
+                await window.HttpClient.post(window.ENDPOINTS.INVESTIGATIONS.IOCS(id), {
+                    iocType: getElement('ioc-type').value,
+                    value: getElement('ioc-value').value.trim(),
+                    malicious: getElement('ioc-malicious').checked,
+                    threatContext: getElement('ioc-context').value.trim() || null
+                });
+                form.reset();
+                setExtraStatus('ioc-status', 'IOC agregado.', 'success');
+                await refreshInvestigationRelated();
+            } catch (error) {
+                setExtraStatus('ioc-status', error.message || 'No se pudo agregar el IOC.', 'danger');
+            }
+        } else if (form.id === 'evidence-form') {
+            event.preventDefault();
+            if (!id) return;
+            try {
+                await window.HttpClient.post(window.ENDPOINTS.INVESTIGATIONS.EVIDENCES(id), {
+                    evidenceType: getElement('evidence-type').value.trim(),
+                    description: getElement('evidence-description').value.trim() || null,
+                    artifactReference: getElement('evidence-reference').value.trim() || null
+                });
+                form.reset();
+                setExtraStatus('evidence-status', 'Evidencia agregada.', 'success');
+                await refreshInvestigationRelated();
+            } catch (error) {
+                setExtraStatus('evidence-status', error.message || 'No se pudo agregar la evidencia.', 'danger');
+            }
+        }
+    }
+
+    function handleExtrasClick(target) {
+        const iocBtn = target.closest('[data-ioc-delete]');
+        const evBtn = target.closest('[data-evidence-delete]');
+        if (!iocBtn && !evBtn) return false;
+
+        const request = iocBtn
+            ? window.HttpClient.delete(window.ENDPOINTS.INVESTIGATIONS.IOC(iocBtn.dataset.iocDelete))
+            : window.HttpClient.delete(window.ENDPOINTS.INVESTIGATIONS.EVIDENCE(evBtn.dataset.evidenceDelete));
+
+        request
+            .then(refreshInvestigationRelated)
+            .catch(error => setExtraStatus(
+                iocBtn ? 'ioc-status' : 'evidence-status',
+                error.message || 'No se pudo eliminar.',
+                'danger'
+            ));
+        return true;
+    }
+
     function handleClick(event) {
-        if (event.target.closest('#btn-layout-cose')) {
+        const target = event.target;
+
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        if (handleExtrasClick(target)) {
+            return;
+        }
+
+        if (target.closest('#btn-layout-cose')) {
             changeGraphLayout('cose');
             return;
         }
 
-        if (event.target.closest('#btn-layout-grid')) {
+        if (target.closest('#btn-layout-grid')) {
             changeGraphLayout('grid');
             return;
         }
 
-        const addButton = event.target.closest(
+        const addButton = target.closest(
             '[data-add-notebook]'
         );
 
         if (addButton) {
-            addNotebookEntry(addButton.dataset.addNotebook);
+            addNotebookEntry(
+                addButton.dataset.addNotebook
+            );
             return;
         }
 
-        const deleteButton = event.target.closest(
+        const deleteButton = target.closest(
             '[data-notebook-type]'
         );
 
         if (deleteButton) {
-            const type = deleteButton.dataset.notebookType;
+            const type =
+                deleteButton.dataset.notebookType;
+
             const index = Number(
                 deleteButton.dataset.notebookIndex
             );
 
-            if (!Array.isArray(notebook[type])) return;
+            if (!Array.isArray(notebook[type])) {
+                return;
+            }
 
             if (
                 !Number.isInteger(index) ||
@@ -1338,7 +1881,9 @@
             'detection'
         ];
 
-        if (!relevantSources.includes(source)) return;
+        if (!relevantSources.includes(source)) {
+            return;
+        }
 
         loadInvestigation();
     }
@@ -1348,12 +1893,24 @@
     // =========================================================
 
     const verdictForm = getElement('verdictForm');
-    const confidenceInput = getElement('verdict-confidence');
+
+    const confidenceInput = getElement(
+        'verdict-confidence'
+    );
+
     const reportButton = getElement(
         'btn-generate-investigation-report'
     );
 
-    document.addEventListener('click', handleClick);
+    document.addEventListener(
+        'click',
+        handleClick
+    );
+
+    document.addEventListener(
+        'submit',
+        handleExtrasSubmit
+    );
 
     verdictForm?.addEventListener(
         'submit',
@@ -1384,15 +1941,26 @@
     // PUBLIC API
     // =========================================================
 
-    window.loadInvestigation = loadInvestigation;
-    window.renderInvestigation = renderInvestigation;
-    window.renderInvestigationTimeline = renderTimeline;
-    window.renderInvestigationGraph = renderGraph;
-    window.addNotebookEntry = addNotebookEntry;
-
-    window.getInvestigationAnalysis = function () {
+    function getInvestigationAnalysis() {
         return investigationAnalysis;
-    };
+    }
+
+    window.loadInvestigation = loadInvestigation;
+
+    window.renderInvestigation =
+        renderInvestigation;
+
+    window.renderInvestigationTimeline =
+        renderTimeline;
+
+    window.renderInvestigationGraph =
+        renderGraph;
+
+    window.addNotebookEntry =
+        addNotebookEntry;
+
+    window.getInvestigationAnalysis =
+        getInvestigationAnalysis;
 
     // =========================================================
     // CLEANUP
@@ -1405,7 +1973,15 @@
         requestVersion++;
         reloadRequested = false;
 
-        document.removeEventListener('click', handleClick);
+        document.removeEventListener(
+            'submit',
+            handleExtrasSubmit
+        );
+
+        document.removeEventListener(
+            'click',
+            handleClick
+        );
 
         verdictForm?.removeEventListener(
             'submit',
@@ -1437,14 +2013,20 @@
             cy = null;
         }
 
-        getElement('investigation-graph-message')?.remove();
+        getElement(
+            'investigation-graph-message'
+        )?.remove();
 
-        if (window.loadInvestigation === loadInvestigation) {
+        if (
+            window.loadInvestigation === loadInvestigation
+        ) {
             window.loadInvestigation =
                 previousGlobals.loadInvestigation;
         }
 
-        if (window.renderInvestigation === renderInvestigation) {
+        if (
+            window.renderInvestigation === renderInvestigation
+        ) {
             window.renderInvestigation =
                 previousGlobals.renderInvestigation;
         }
@@ -1456,30 +2038,39 @@
                 previousGlobals.renderInvestigationTimeline;
         }
 
-        if (window.renderInvestigationGraph === renderGraph) {
+        if (
+            window.renderInvestigationGraph === renderGraph
+        ) {
             window.renderInvestigationGraph =
                 previousGlobals.renderInvestigationGraph;
         }
 
-        if (window.addNotebookEntry === addNotebookEntry) {
+        if (
+            window.addNotebookEntry === addNotebookEntry
+        ) {
             window.addNotebookEntry =
                 previousGlobals.addNotebookEntry;
         }
 
         if (
-            window.getInvestigationAnalysis &&
-            typeof window.getInvestigationAnalysis === 'function'
+            window.getInvestigationAnalysis ===
+            getInvestigationAnalysis
         ) {
             window.getInvestigationAnalysis =
                 previousGlobals.getInvestigationAnalysis;
         }
 
-        if (window.destroyCurrentModule === cleanup) {
+        if (
+            window.destroyCurrentModule === cleanup
+        ) {
             window.destroyCurrentModule =
                 previousGlobals.destroyCurrentModule;
         }
 
-        if (window.investigationAnalysis === investigationAnalysis) {
+        if (
+            window.investigationAnalysis ===
+            investigationAnalysis
+        ) {
             delete window.investigationAnalysis;
         }
 
@@ -1487,6 +2078,8 @@
         currentIncident = null;
         currentEvents = [];
         currentAlerts = [];
+        currentGraph = null;
+        currentTimeline = [];
         investigationAnalysis = null;
     }
 

@@ -123,6 +123,18 @@
             BY_INCIDENT: (incidentId) =>
                 `${API_BASE_URL}/investigations/incident/${validateId(incidentId, 'Incident ID')}`,
 
+            IOCS: (id) =>
+                `${API_BASE_URL}/investigations/${validateId(id, 'Investigation ID')}/iocs`,
+
+            EVIDENCES: (id) =>
+                `${API_BASE_URL}/investigations/${validateId(id, 'Investigation ID')}/evidences`,
+
+            IOC: (id) =>
+                `${API_BASE_URL}/iocs/${validateId(id, 'IOC ID')}`,
+
+            EVIDENCE: (id) =>
+                `${API_BASE_URL}/evidences/${validateId(id, 'Evidence ID')}`,
+
             GRAPH: (id) =>
                 `${API_BASE_URL}/investigations/${validateId(id, 'Investigation ID')}/graph`,
 

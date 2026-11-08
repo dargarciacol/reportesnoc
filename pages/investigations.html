@@ -603,6 +603,74 @@
     </div>
 
 
+    <!-- IOC Y EVIDENCIAS (datos reales persistidos en el backend) -->
+    <div class="container-fluid px-3 pb-4">
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="card bg-surface border-panel rounded-3">
+                    <div class="card-header bg-transparent border-panel text-main fw-semibold">
+                        <i class="bi bi-bug text-primary-nova me-2"></i>Indicadores de compromiso (IOC)
+                    </div>
+                    <div class="card-body">
+                        <form id="ioc-form" class="row g-2 mb-3">
+                            <div class="col-4">
+                                <select id="ioc-type" class="form-select form-select-sm" required>
+                                    <option value="IP">IP</option>
+                                    <option value="DOMAIN">DOMAIN</option>
+                                    <option value="URL">URL</option>
+                                    <option value="HASH">HASH</option>
+                                    <option value="EMAIL">EMAIL</option>
+                                    <option value="FILE">FILE</option>
+                                </select>
+                            </div>
+                            <div class="col-8">
+                                <input id="ioc-value" class="form-control form-control-sm" placeholder="Valor del indicador" maxlength="255" required>
+                            </div>
+                            <div class="col-12">
+                                <input id="ioc-context" class="form-control form-control-sm" placeholder="Contexto de la amenaza (opcional)" maxlength="4000">
+                            </div>
+                            <div class="col-6 form-check ms-2">
+                                <input id="ioc-malicious" type="checkbox" class="form-check-input">
+                                <label for="ioc-malicious" class="form-check-label small">Malicioso</label>
+                            </div>
+                            <div class="col text-end">
+                                <button type="submit" class="btn btn-sm btn-primary">Agregar IOC</button>
+                            </div>
+                        </form>
+                        <div id="ioc-status" class="small mb-2"></div>
+                        <ul id="ioc-list" class="list-group list-group-flush small"></ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card bg-surface border-panel rounded-3">
+                    <div class="card-header bg-transparent border-panel text-main fw-semibold">
+                        <i class="bi bi-folder2-open text-primary-nova me-2"></i>Evidencias
+                    </div>
+                    <div class="card-body">
+                        <form id="evidence-form" class="row g-2 mb-3">
+                            <div class="col-12">
+                                <input id="evidence-type" class="form-control form-control-sm" placeholder="Tipo (p. ej. Registro, Captura, Hash)" maxlength="100" required>
+                            </div>
+                            <div class="col-12">
+                                <input id="evidence-description" class="form-control form-control-sm" placeholder="Descripción" maxlength="4000">
+                            </div>
+                            <div class="col-12">
+                                <input id="evidence-reference" class="form-control form-control-sm" placeholder="Referencia del artefacto (ruta, URL, hash)" maxlength="255">
+                            </div>
+                            <div class="col-12 text-end">
+                                <button type="submit" class="btn btn-sm btn-primary">Agregar evidencia</button>
+                            </div>
+                        </form>
+                        <div id="evidence-status" class="small mb-2"></div>
+                        <ul id="evidence-list" class="list-group list-group-flush small"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
     <!--
         Las bibliotecas compartidas y los módulos de JavaScript
         se administran desde app.html y el enrutador principal.
