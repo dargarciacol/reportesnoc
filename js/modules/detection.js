@@ -1,5 +1,7 @@
 
 (function () {
+    'use strict';
+
     const tbody = document.getElementById('table-rules-body');
     const statActive = document.getElementById('stat-active-rules');
     const statDisabled = document.getElementById('stat-disabled-rules');
@@ -8,7 +10,15 @@
     const statusFilter = document.getElementById('filter-rule-status');
 
     let rules = [];
+    let isActive = true;
     let isLoading = false;
+    let requestCounter = 0;
+
+    const previousGlobals = {
+        destroy: window.destroyCurrentModule,
+        load: window.loadDetectionRules,
+        render: window.renderRulesTable
+    };
 
     const severityColors = {
         CRITICAL: '#EF4444',
@@ -49,12 +59,33 @@
         })[character]);
     }
 
-    function normalizeSeverity(severity) {
-        return String(severity || '').toUpperCase();
+    function normalizeValue(value) {
+        return String(value ?? '')
+            .trim()
+            .toUpperCase()
+            .replace(/[\s-]+/g, '_');
+    }
+
+    function normalizeRule(rule) {
+        if (!rule || typeof rule !== 'object' || !rule.id) {
+            throw new Error('Invalid detection rule received from backend.');
+        }
+
+        return {
+            id: String(rule.id),
+            name: rule.name || '',
+            category: normalizeValue(rule.category),
+            mitreTechniqueId: rule.mitreTechniqueId || '',
+            severity: normalizeValue(rule.severity),
+            sigmaLogic: rule.sigmaLogic || '',
+            active: rule.active === true,
+            hitCount: Number(rule.hitCount) || 0
+        };
     }
 
     function translateSeverity(severity) {
-        const value = normalizeSeverity(severity);
+        const value = normalizeValue(severity);
+
         const keys = {
             CRITICAL: 'critical',
             HIGH: 'high',
@@ -66,7 +97,8 @@
     }
 
     function translateCategory(category) {
-        const value = String(category || '').toUpperCase();
+        const value = normalizeValue(category);
+
         const keys = {
             INITIAL_ACCESS: 'initialAccess',
             EXECUTION: 'execution',
@@ -86,16 +118,18 @@
         return t(keys[value], categoryLabels[value] || value);
     }
 
-    function showTableMessage(message) {
+    function showTableMessage(message, type = 'muted') {
         if (!tbody) return;
 
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="7" class="text-center text-muted py-4">
-                    ${escapeHtml(message)}
-                </td>
-            </tr>
-        `;
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+
+        cell.colSpan = 7;
+        cell.className = `text-center text-${type} py-4`;
+        cell.textContent = message;
+
+        row.appendChild(cell);
+        tbody.replaceChildren(row);
     }
 
     function calculateStats() {
@@ -113,45 +147,47 @@
         return rules.filter(rule => {
             const matchesSearch =
                 !search ||
-                String(rule.name || '').toLowerCase().includes(search) ||
-                String(rule.mitreTechniqueId || '').toLowerCase().includes(search);
+                rule.name.toLowerCase().includes(search) ||
+                rule.mitreTechniqueId.toLowerCase().includes(search);
 
             const matchesStatus =
                 !status ||
-                (status === 'Active' && rule.active) ||
-                (status === 'Disabled' && !rule.active);
+                (status.toLowerCase() === 'active' && rule.active) ||
+                (status.toLowerCase() === 'disabled' && !rule.active);
 
             return matchesSearch && matchesStatus;
         });
     }
 
     function renderRulesTable() {
-        if (!tbody) return;
+        if (!isActive || !tbody) return;
 
         const filteredRules = getFilteredRules();
 
-        tbody.innerHTML = '';
+        tbody.replaceChildren();
 
         if (filteredRules.length === 0) {
             showTableMessage(
                 rules.length === 0
-                    ? 'No detection rules registered.'
-                    : 'No rules match the selected filters.'
+                    ? t('noDetectionRules', 'No detection rules registered.')
+                    : t('noMatchingRules', 'No rules match the selected filters.')
             );
+
             calculateStats();
             return;
         }
 
         filteredRules.forEach(rule => {
-            const tr = document.createElement('tr');
-            const severity = normalizeSeverity(rule.severity);
+            const row = document.createElement('tr');
+
+            const severity = normalizeValue(rule.severity);
             const color = severityColors[severity] || '#94A3B8';
 
             if (!rule.active) {
-                tr.style.opacity = '0.6';
+                row.style.opacity = '0.6';
             }
 
-            tr.innerHTML = `
+            row.innerHTML = `
                 <td class="text-center">
                     <div class="form-check form-switch d-flex justify-content-center">
                         <input
@@ -181,8 +217,8 @@
                 </td>
 
                 <td class="text-center fw-bold"
-                    style="color: ${(rule.hitCount || 0) > 0 ? '#F8FAFC' : '#94A3B8'}">
-                    ${Number(rule.hitCount || 0)}
+                    style="color: ${rule.hitCount > 0 ? '#F8FAFC' : '#94A3B8'}">
+                    ${rule.hitCount}
                 </td>
 
                 <td class="text-center">
@@ -197,143 +233,291 @@
                 </td>
             `;
 
-            tbody.appendChild(tr);
+            tbody.appendChild(row);
         });
 
         calculateStats();
     }
 
     async function loadRules() {
-        if (isLoading) return;
+        if (!isActive || isLoading) return;
+
+        if (!window.HttpClient || !window.ENDPOINTS?.DETECTION?.RULES) {
+            showTableMessage(
+                'Detection rules API configuration is unavailable.',
+                'danger'
+            );
+            return;
+        }
+
+        const currentRequest = ++requestCounter;
 
         isLoading = true;
-        showTableMessage('Loading detection rules...');
+        showTableMessage(t('loading', 'Loading detection rules...'));
 
         try {
-            const response = await HttpClient.get(ENDPOINTS.DETECTION.RULES);
+            const response = await HttpClient.get(
+                ENDPOINTS.DETECTION.RULES
+            );
 
-            if (!response || !Array.isArray(response.data)) {
-                throw new Error('Unexpected detection rules response.');
+            if (!isActive || currentRequest !== requestCounter) {
+                return;
             }
 
-            rules = response.data;
+            if (!response || !Array.isArray(response.data)) {
+                throw new Error(
+                    'Invalid detection rules response from backend.'
+                );
+            }
+
+            rules = response.data.map(normalizeRule);
+
             renderRulesTable();
 
         } catch (error) {
+            if (!isActive || currentRequest !== requestCounter) {
+                return;
+            }
+
             console.error('Error loading detection rules:', error);
+
             rules = [];
             calculateStats();
 
             showTableMessage(
-                error.message || 'Unable to load detection rules.'
+                error.message || 'Unable to load detection rules.',
+                'danger'
             );
+
         } finally {
-            isLoading = false;
+            if (currentRequest === requestCounter) {
+                isLoading = false;
+            }
         }
     }
 
     async function toggleRule(id, checkbox) {
+        if (!isActive || !id || checkbox.disabled) return;
+
+        const previousState = !checkbox.checked;
+
         checkbox.disabled = true;
 
         try {
-            await HttpClient.patch(
+            const response = await HttpClient.patch(
                 ENDPOINTS.DETECTION.TOGGLE_RULE(id)
             );
 
-            await loadRules();
+            if (!isActive) return;
+
+            if (!response?.data || response.data.id !== id) {
+                throw new Error(
+                    'Invalid response when updating detection rule.'
+                );
+            }
+
+            const updatedRule = normalizeRule(response.data);
+
+            rules = rules.map(rule =>
+                rule.id === id ? updatedRule : rule
+            );
+
+            renderRulesTable();
 
         } catch (error) {
+            if (!isActive) return;
+
             console.error('Error changing rule status:', error);
 
-            checkbox.checked = !checkbox.checked;
+            checkbox.checked = previousState;
             checkbox.disabled = false;
 
-            alert(error.message || 'Unable to update rule status.');
+            alert(
+                error.message || 'Unable to update rule status.'
+            );
         }
     }
 
+    function handleTableChange(event) {
+        const checkbox = event.target.closest('.rule-toggle');
+
+        if (!checkbox) return;
+
+        const id = checkbox.dataset.ruleId;
+
+        if (!id) return;
+
+        toggleRule(id, checkbox);
+    }
+
+    async function handleCreateRule(event) {
+        event.preventDefault();
+
+        if (!isActive) return;
+
+        const name = document.getElementById('ruleName')?.value.trim();
+        const category = document.getElementById('ruleCategory')?.value;
+        const severity = document.getElementById('ruleSeverity')?.value;
+        const mitreTechniqueId =
+            document.getElementById('ruleMitre')?.value.trim();
+        const sigmaLogic =
+            document.getElementById('ruleSigma')?.value.trim();
+
+        const activeSwitch =
+            document.getElementById('ruleActiveSwitch');
+
+        const active = activeSwitch?.checked ?? false;
+
+        if (!name || !category || !severity || !sigmaLogic) {
+            alert(
+                t('completeRequiredFields', 'Please complete all required fields.')
+            );
+            return;
+        }
+
+        const payload = {
+            name,
+            category: normalizeValue(category),
+            mitreTechniqueId: mitreTechniqueId || null,
+            severity: normalizeValue(severity),
+            sigmaLogic,
+            active
+        };
+
+        const submitButton = formCreateRule.querySelector(
+            'button[type="submit"]'
+        );
+
+        if (submitButton) {
+            submitButton.disabled = true;
+        }
+
+        try {
+            const response = await HttpClient.post(
+                ENDPOINTS.DETECTION.RULES,
+                payload
+            );
+
+            if (!isActive) return;
+
+            if (!response?.data?.id) {
+                throw new Error(
+                    'Invalid response when creating detection rule.'
+                );
+            }
+
+            const createdRule = normalizeRule(response.data);
+
+            rules = [
+                createdRule,
+                ...rules.filter(rule => rule.id !== createdRule.id)
+            ];
+
+            formCreateRule.reset();
+
+            const modalElement =
+                document.getElementById('createRuleModal');
+
+            if (modalElement && window.bootstrap?.Modal) {
+                const modal = bootstrap.Modal.getInstance(modalElement);
+                modal?.hide();
+            }
+
+            renderRulesTable();
+
+        } catch (error) {
+            if (!isActive) return;
+
+            console.error('Error creating detection rule:', error);
+
+            alert(
+                error.message || 'Unable to create detection rule.'
+            );
+
+        } finally {
+            if (isActive && submitButton) {
+                submitButton.disabled = false;
+            }
+        }
+    }
+
+    function handleSearch() {
+        renderRulesTable();
+    }
+
+    function handleLanguageChange() {
+        renderRulesTable();
+    }
+
     if (tbody) {
-        tbody.addEventListener('change', event => {
-            const checkbox = event.target.closest('.rule-toggle');
-
-            if (!checkbox) return;
-
-            const id = checkbox.dataset.ruleId;
-            if (!id) return;
-
-            toggleRule(id, checkbox);
-        });
+        tbody.addEventListener('change', handleTableChange);
     }
 
     if (formCreateRule) {
-        formCreateRule.addEventListener('submit', async event => {
-            event.preventDefault();
-
-            const name = document.getElementById('ruleName')?.value.trim();
-            const category = document.getElementById('ruleCategory')?.value;
-            const severity = document.getElementById('ruleSeverity')?.value;
-            const mitreTechniqueId =
-                document.getElementById('ruleMitre')?.value.trim();
-            const sigmaLogic =
-                document.getElementById('ruleSigma')?.value.trim();
-            const active =
-                document.getElementById('ruleActiveSwitch')?.checked;
-
-            if (!name || !category || !severity || !sigmaLogic) {
-                alert('Please complete all required fields.');
-                return;
-            }
-
-            const payload = {
-                name,
-                category,
-                mitreTechniqueId: mitreTechniqueId || null,
-                severity: severity.toUpperCase(),
-                sigmaLogic,
-                active: Boolean(active)
-            };
-
-            const submitButton = formCreateRule.querySelector(
-                'button[type="submit"]'
-            );
-
-            if (submitButton) submitButton.disabled = true;
-
-            try {
-                await HttpClient.post(
-                    ENDPOINTS.DETECTION.RULES,
-                    payload
-                );
-
-                formCreateRule.reset();
-
-                const modalElement =
-                    document.getElementById('createRuleModal');
-
-                const modal = modalElement
-                    ? bootstrap.Modal.getInstance(modalElement)
-                    : null;
-
-                modal?.hide();
-
-                await loadRules();
-
-            } catch (error) {
-                console.error('Error creating detection rule:', error);
-                alert(error.message || 'Unable to create detection rule.');
-            } finally {
-                if (submitButton) submitButton.disabled = false;
-            }
-        });
+        formCreateRule.addEventListener('submit', handleCreateRule);
     }
 
-    searchInput?.addEventListener('input', renderRulesTable);
-    statusFilter?.addEventListener('change', renderRulesTable);
+    if (searchInput) {
+        searchInput.addEventListener('input', handleSearch);
+    }
 
-    document.addEventListener('nova:languageChanged', renderRulesTable);
+    if (statusFilter) {
+        statusFilter.addEventListener('change', handleSearch);
+    }
+
+    document.addEventListener(
+        'nova:languageChanged',
+        handleLanguageChange
+    );
 
     window.loadDetectionRules = loadRules;
     window.renderRulesTable = renderRulesTable;
 
+    function destroyDetectionModule() {
+        if (!isActive) return;
+
+        isActive = false;
+        requestCounter++;
+
+        if (tbody) {
+            tbody.removeEventListener('change', handleTableChange);
+        }
+
+        if (formCreateRule) {
+            formCreateRule.removeEventListener('submit', handleCreateRule);
+        }
+
+        if (searchInput) {
+            searchInput.removeEventListener('input', handleSearch);
+        }
+
+        if (statusFilter) {
+            statusFilter.removeEventListener('change', handleSearch);
+        }
+
+        document.removeEventListener(
+            'nova:languageChanged',
+            handleLanguageChange
+        );
+
+        if (window.loadDetectionRules === loadRules) {
+            window.loadDetectionRules = previousGlobals.load;
+        }
+
+        if (window.renderRulesTable === renderRulesTable) {
+            window.renderRulesTable = previousGlobals.render;
+        }
+
+        if (window.destroyCurrentModule === destroyDetectionModule) {
+            window.destroyCurrentModule = previousGlobals.destroy;
+        }
+
+        rules = [];
+        isLoading = false;
+    }
+
+    window.destroyCurrentModule = destroyDetectionModule;
+
     loadRules();
+
 })();

@@ -21,12 +21,19 @@
     const statIncident = getElement('stat-incident-reports');
     const statCompliance = getElement('stat-compliance-reports');
 
+    const searchInput = getElement('search-reports');
+    const filterType = getElement('filter-report-type');
+    const filterDate = getElement('filter-report-date');
+
     // =========================================================
     // STATE
     // =========================================================
 
     let generatedReports = [];
     let isGenerating = false;
+    let isActive = true;
+
+    const originalButtonText = btnSubmit?.textContent || '';
 
     // =========================================================
     // HELPERS
@@ -93,11 +100,14 @@
             'Compliance Audit': 'complianceAudit'
         };
 
-        return translate(translations[type], type || '--');
+        return translate(
+            translations[type],
+            type || '--'
+        );
     }
 
     function showStatus(message, type = 'success') {
-        if (!reportStatus) return;
+        if (!isActive || !reportStatus) return;
 
         reportStatus.className = `alert alert-${type} mt-3`;
         reportStatus.textContent = message;
@@ -109,7 +119,7 @@
     }
 
     function setButtonLoading(loading) {
-        if (!btnSubmit) return;
+        if (!btnSubmit || !isActive) return;
 
         btnSubmit.disabled = loading;
 
@@ -118,13 +128,11 @@
                 <span class="spinner-border spinner-border-sm me-2"
                       role="status"
                       aria-hidden="true"></span>
-                ${translate('compiling', 'Generating...')}
+                ${escapeHTML(translate('compiling', 'Generating...'))}
             `;
         } else {
-            btnSubmit.textContent = translate(
-                'compileGenerate',
-                'Compile & Generate'
-            );
+            btnSubmit.textContent = originalButtonText ||
+                translate('compileGenerate', 'Compile & Generate');
         }
     }
 
@@ -155,15 +163,13 @@
     }
 
     // =========================================================
-    // REPORT FILTERING
+    // FILTERING
     // =========================================================
 
     function getFilteredReports() {
-        const search = getElement('search-reports')
-            ?.value.toLowerCase().trim() || '';
-
-        const selectedType = getElement('filter-report-type')?.value || '';
-        const selectedDate = getElement('filter-report-date')?.value || '';
+        const search = searchInput?.value.toLowerCase().trim() || '';
+        const selectedType = filterType?.value || '';
+        const selectedDate = filterDate?.value || '';
 
         return generatedReports.filter(report => {
             const reportId = String(report.reportId || '').toLowerCase();
@@ -189,7 +195,7 @@
     // =========================================================
 
     function renderReportsTable() {
-        if (!tbody) return;
+        if (!isActive || !tbody) return;
 
         const filteredReports = getFilteredReports();
 
@@ -199,10 +205,10 @@
             tbody.innerHTML = `
                 <tr>
                     <td colspan="6" class="text-center text-muted py-4">
-                        ${translate(
+                        ${escapeHTML(translate(
                             'noReportsAvailable',
                             'No reports available.'
-                        )}
+                        ))}
                     </td>
                 </tr>
             `;
@@ -230,8 +236,12 @@
                     : '#EAB308';
 
             const authorHTML = report.author === 'System'
-                ? `<i class="bi bi-robot me-1"></i>${translate('system', 'System')}`
-                : `<i class="bi bi-person-fill me-1"></i>${escapeHTML(report.author || '--')}`;
+                ? `<i class="bi bi-robot me-1"></i>${escapeHTML(
+                    translate('system', 'System')
+                )}`
+                : `<i class="bi bi-person-fill me-1"></i>${escapeHTML(
+                    report.author || '--'
+                )}`;
 
             tr.innerHTML = `
                 <td style="font-family: monospace; color: var(--primary); font-weight: 600;">
@@ -259,7 +269,10 @@
 
                 <td class="text-center">
                     <span class="text-muted"
-                          title="${translate('downloadUnavailable', 'Download not connected yet')}">
+                          title="${escapeHTML(translate(
+                              'downloadUnavailable',
+                              'Download not implemented yet'
+                          ))}">
                         <i class="bi ${icon}"></i>
                         <small>--</small>
                     </span>
@@ -303,7 +316,7 @@
     async function generateReport(event) {
         event.preventDefault();
 
-        if (isGenerating) return;
+        if (!isActive || isGenerating) return;
 
         if (!typeSelect || !formatSelect || !btnSubmit) {
             console.error('Report form elements are missing.');
@@ -331,7 +344,13 @@
         }
 
         if (!format) {
-            showStatus('Select a report format.', 'warning');
+            showStatus(
+                translate(
+                    'reportFormatRequired',
+                    'Select a report format.'
+                ),
+                'warning'
+            );
             return;
         }
 
@@ -367,9 +386,18 @@
                 payload
             );
 
+            if (!isActive) return;
+
             const report = response?.data;
 
-            if (!report || !report.reportId) {
+            if (
+                !report ||
+                typeof report !== 'object' ||
+                !report.reportId ||
+                !report.title ||
+                !report.type ||
+                !report.generatedAt
+            ) {
                 throw new Error(
                     translate(
                         'invalidReportResponse',
@@ -380,12 +408,12 @@
 
             const normalizedReport = {
                 reportId: String(report.reportId),
-                title: report.title || 'Untitled Report',
-                type: report.type || type,
-                format: report.format || format,
-                author: report.author || 'System',
-                generatedAt: report.generatedAt || null,
-                data: report.incidentDetails || null
+                title: String(report.title),
+                type: String(report.type),
+                format: String(report.format || format),
+                author: String(report.author || 'System'),
+                generatedAt: report.generatedAt,
+                incidentDetails: report.incidentDetails || null
             };
 
             generatedReports = [
@@ -398,7 +426,16 @@
             renderReportsTable();
 
             showStatus(
-                `${translate('success', 'Success')}: ${translate('report', 'Report')} ${normalizedReport.reportId} ${translate('reportGenerated', 'generated successfully.')}`,
+                `${translate('success', 'Success')}: ${translate(
+                    'report',
+                    'Report'
+                )} ${normalizedReport.reportId} ${translate(
+                    'reportGenerated',
+                    'generated successfully.'
+                )} ${translate(
+                    'reportMetadataOnly',
+                    'The report information was generated; file download is not implemented.'
+                )}`,
                 'success'
             );
 
@@ -408,12 +445,13 @@
             const modalElement = getElement('generateReportModal');
 
             if (modalElement && window.bootstrap?.Modal) {
-                const modal = bootstrap.Modal.getInstance(modalElement);
-
+                const modal = window.bootstrap.Modal.getInstance(modalElement);
                 modal?.hide();
             }
 
         } catch (error) {
+            if (!isActive) return;
+
             console.error('Report generation failed:', error);
 
             showStatus(
@@ -426,45 +464,102 @@
 
         } finally {
             isGenerating = false;
-            setButtonLoading(false);
+
+            if (isActive) {
+                setButtonLoading(false);
+            }
         }
     }
 
     // =========================================================
-    // EVENTS
+    // EVENT LISTENERS
     // =========================================================
 
-    typeSelect?.addEventListener('change', updateIncidentField);
-
-    formGenerateReport?.addEventListener('submit', generateReport);
-
-    getElement('search-reports')
-        ?.addEventListener('input', renderReportsTable);
-
-    getElement('filter-report-type')
-        ?.addEventListener('change', renderReportsTable);
-
-    getElement('filter-report-date')
-        ?.addEventListener('change', renderReportsTable);
-
-    document.addEventListener('nova:languageChanged', () => {
+    function handleLanguageChanged() {
         renderReportsTable();
 
         if (!isGenerating) {
             setButtonLoading(false);
         }
-    });
+    }
+
+    function handleSearch() {
+        renderReportsTable();
+    }
+
+    function handleFilter() {
+        renderReportsTable();
+    }
+
+    function handleTypeChange() {
+        updateIncidentField();
+    }
+
+    function initializeListeners() {
+        typeSelect?.addEventListener('change', handleTypeChange);
+        formGenerateReport?.addEventListener('submit', generateReport);
+
+        searchInput?.addEventListener('input', handleSearch);
+        filterType?.addEventListener('change', handleFilter);
+        filterDate?.addEventListener('change', handleFilter);
+
+        document.addEventListener(
+            'nova:languageChanged',
+            handleLanguageChanged
+        );
+    }
+
+    function removeListeners() {
+        typeSelect?.removeEventListener('change', handleTypeChange);
+        formGenerateReport?.removeEventListener('submit', generateReport);
+
+        searchInput?.removeEventListener('input', handleSearch);
+        filterType?.removeEventListener('change', handleFilter);
+        filterDate?.removeEventListener('change', handleFilter);
+
+        document.removeEventListener(
+            'nova:languageChanged',
+            handleLanguageChanged
+        );
+    }
+
+    // =========================================================
+    // CLEANUP
+    // =========================================================
+
+    function destroyModule() {
+        if (!isActive) return;
+
+        isActive = false;
+
+        removeListeners();
+
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = originalButtonText;
+        }
+
+        if (window.renderReportsTable === renderReportsTable) {
+            delete window.renderReportsTable;
+        }
+
+        if (window.destroyCurrentModule === destroyModule) {
+            delete window.destroyCurrentModule;
+        }
+    }
 
     // =========================================================
     // PUBLIC API
     // =========================================================
 
     window.renderReportsTable = renderReportsTable;
+    window.destroyCurrentModule = destroyModule;
 
     // =========================================================
     // INITIALIZATION
     // =========================================================
 
+    initializeListeners();
     updateIncidentField();
     renderReportsTable();
 

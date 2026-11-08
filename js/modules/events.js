@@ -18,6 +18,7 @@
 
     let events = [];
     let loading = false;
+    let uploadInProgress = false;
 
     // ==========================================
     // TRADUCCIONES
@@ -44,7 +45,29 @@
     }
 
     // ==========================================
-    // TRADUCCIÓN DE SEVERIDAD
+    // NORMALIZACIÓN
+    // ==========================================
+
+    function normalizeSeverity(severity) {
+        return String(severity || '').toUpperCase();
+    }
+
+    function normalizeEvent(event) {
+        return {
+            id: event.id,
+            timestamp: event.timestamp,
+            sourceIp: event.sourceIp || '--',
+            userIdentity: event.userIdentity || '--',
+            eventType: event.eventType || '--',
+            action: event.action || '--',
+            severity: normalizeSeverity(event.severity),
+            rawData: event.rawData || {},
+            synthetic: Boolean(event.synthetic)
+        };
+    }
+
+    // ==========================================
+    // TRADUCCIONES DE SEVERIDAD
     // ==========================================
 
     function translateSeverity(severity) {
@@ -56,28 +79,34 @@
             INFO: 'info'
         };
 
-        return t(keys[severity], severity || '--');
+        const value = normalizeSeverity(severity);
+
+        return keys[value]
+            ? t(keys[value], value)
+            : value || '--';
     }
 
     // ==========================================
-    // TRADUCCIÓN DE TIPO DE EVENTO
+    // TRADUCCIONES DE TIPO DE EVENTO
     // ==========================================
 
     function translateEventType(type) {
         const keys = {
-            Authentication: 'authentication',
+            'Authentication': 'authentication',
             'Process Execution': 'processExecution',
             'Network Connection': 'networkConnection',
             'File Access': 'fileAccess',
-            Configuration: 'configuration',
+            'Configuration': 'configuration',
             'Data Ingestion': 'dataIngestion'
         };
 
-        return t(keys[type], type || '--');
+        return keys[type]
+            ? t(keys[type], type)
+            : type || '--';
     }
 
     // ==========================================
-    // TRADUCCIÓN DE ACCIÓN
+    // TRADUCCIONES DE ACCIÓN
     // ==========================================
 
     function translateEventAction(action) {
@@ -88,11 +117,13 @@
             'Excel File Processed': 'excelFileProcessed'
         };
 
-        return t(keys[action], action || '--');
+        return keys[action]
+            ? t(keys[action], action)
+            : action || '--';
     }
 
     // ==========================================
-    // COLORES DE SEVERIDAD
+    // COLORES
     // ==========================================
 
     function getSeverityColor(severity) {
@@ -104,11 +135,11 @@
             INFO: '#06B6D4'
         };
 
-        return colors[severity] || '#6B7280';
+        return colors[normalizeSeverity(severity)] || '#6B7280';
     }
 
     // ==========================================
-    // FORMATO DE FECHA
+    // FECHAS
     // ==========================================
 
     function formatEventDate(dateValue) {
@@ -133,21 +164,21 @@
     }
 
     // ==========================================
-    // NORMALIZACIÓN DE EVENTOS
+    // MENSAJES DE TABLA
     // ==========================================
 
-    function normalizeEvent(event) {
-        return {
-            id: event.id,
-            time: event.timestamp,
-            ip: event.sourceIp || '--',
-            user: event.userIdentity || '--',
-            type: event.eventType || '--',
-            action: event.action || '--',
-            severity: event.severity || 'LOW',
-            rawData: event.rawData || {},
-            synthetic: event.synthetic
-        };
+    function showTableMessage(message, type = 'muted') {
+        if (!tbody) return;
+
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+
+        cell.colSpan = 7;
+        cell.className = `text-center py-4 text-${type}`;
+        cell.textContent = message;
+
+        row.appendChild(cell);
+        tbody.replaceChildren(row);
     }
 
     // ==========================================
@@ -158,88 +189,98 @@
         if (!tbody) return;
 
         if (loading) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center py-4">
-                        <span class="spinner-border spinner-border-sm me-2"></span>
-                        ${t('loading', 'Loading events...')}
-                    </td>
-                </tr>
-            `;
+            showTableMessage(t('loading', 'Loading events...'));
             return;
         }
 
         if (!events.length) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center py-4 text-secondary">
-                        ${t('noEvents', 'No events found')}
-                    </td>
-                </tr>
-            `;
+            showTableMessage(t('noEvents', 'No events found'));
             return;
         }
 
-        tbody.innerHTML = events.map(evt => {
-            const color = getSeverityColor(evt.severity);
-            const action = translateEventAction(evt.action);
+        const fragment = document.createDocumentFragment();
 
-            return `
-                <tr>
-                    <td style="color: var(--text-muted); font-size: 0.85rem;">
-                        ${escapeHTML(formatEventDate(evt.time))}
-                    </td>
+        events.forEach(event => {
+            const color = getSeverityColor(event.severity);
+            const row = document.createElement('tr');
 
-                    <td style="font-family: monospace;">
-                        ${escapeHTML(evt.ip)}
-                    </td>
+            const cells = [
+                formatEventDate(event.timestamp),
+                event.sourceIp,
+                event.userIdentity,
+                translateEventType(event.eventType),
+                translateEventAction(event.action)
+            ];
 
-                    <td>
-                        ${escapeHTML(evt.user)}
-                    </td>
+            cells.forEach((value, index) => {
+                const cell = document.createElement('td');
 
-                    <td>
-                        ${escapeHTML(translateEventType(evt.type))}
-                    </td>
+                if (index === 0) {
+                    cell.className = 'text-muted';
+                    cell.style.fontSize = '0.85rem';
+                }
 
-                    <td>
-                        ${escapeHTML(action)}
-                    </td>
+                if (index === 1) {
+                    cell.style.fontFamily = 'monospace';
+                }
 
-                    <td>
-                        <span class="badge"
-                              style="
-                                background-color: ${color}20;
-                                color: ${color};
-                                border: 1px solid ${color};
-                              ">
-                            ${escapeHTML(translateSeverity(evt.severity))}
-                        </span>
-                    </td>
+                cell.textContent = value ?? '--';
+                row.appendChild(cell);
+            });
 
-                    <td class="text-center">
-                        <button
-                            class="btn btn-sm btn-outline-info py-0 px-2"
-                            data-event-id="${escapeHTML(evt.id)}"
-                            title="${escapeHTML(t('viewDetails', 'View details'))}"
-                            aria-label="${escapeHTML(t('viewDetails', 'View details'))}"
-                        >
-                            <i class="bi bi-list-columns-reverse"></i>
-                        </button>
-                    </td>
-                </tr>
+            // Severity
+            const severityCell = document.createElement('td');
+            const badge = document.createElement('span');
+
+            badge.className = 'badge';
+            badge.style.cssText = `
+                background-color: ${color}20;
+                color: ${color};
+                border: 1px solid ${color};
             `;
-        }).join('');
+
+            badge.textContent = translateSeverity(event.severity);
+            severityCell.appendChild(badge);
+            row.appendChild(severityCell);
+
+            // Details
+            const detailsCell = document.createElement('td');
+            detailsCell.className = 'text-center';
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className =
+                'btn btn-sm btn-outline-info py-0 px-2';
+
+            button.dataset.eventId = event.id;
+            button.title = t('viewDetails', 'View details');
+            button.setAttribute(
+                'aria-label',
+                t('viewDetails', 'View details')
+            );
+
+            button.innerHTML =
+                '<i class="bi bi-list-columns-reverse"></i>';
+
+            detailsCell.appendChild(button);
+            row.appendChild(detailsCell);
+
+            fragment.appendChild(row);
+        });
+
+        tbody.replaceChildren(fragment);
     }
 
     // ==========================================
-    // CARGAR EVENTOS DESDE EL BACKEND
+    // CARGAR EVENTOS DEL BACKEND
     // ==========================================
 
     async function loadEvents() {
-        if (!tbody || typeof HttpClient === 'undefined') {
+        if (loading) return;
+
+        if (!tbody || !window.HttpClient || !window.ENDPOINTS) {
             console.error(
-                'Events: HttpClient or table element not found.'
+                'Events: missing table, HttpClient or ENDPOINTS.'
             );
             return;
         }
@@ -248,15 +289,15 @@
         renderEventsTable();
 
         try {
-            const response = await HttpClient.get(
-                ENDPOINTS.EVENTS.LIST
+            const response = await window.HttpClient.get(
+                window.ENDPOINTS.EVENTS.LIST
             );
 
             const page = response?.data;
 
             if (!page || !Array.isArray(page.content)) {
                 throw new Error(
-                    'Unexpected events API response format.'
+                    'Invalid response: expected a paginated events list.'
                 );
             }
 
@@ -267,17 +308,13 @@
 
             events = [];
 
-            loading = false;
-
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center text-danger py-4">
-                        ${escapeHTML(
-                            error.message || 'Unable to load events'
-                        )}
-                    </td>
-                </tr>
-            `;
+            showTableMessage(
+                error.message || t(
+                    'eventsLoadError',
+                    'Unable to load events.'
+                ),
+                'danger'
+            );
 
             return;
 
@@ -296,27 +333,25 @@
         if (!id) return;
 
         try {
-            const response = await HttpClient.get(
-                ENDPOINTS.EVENTS.DETAILS(id)
+            const response = await window.HttpClient.get(
+                window.ENDPOINTS.EVENTS.DETAILS(id)
             );
 
             const event = response?.data;
 
-            if (!event) {
+            if (!event || !event.id) {
                 throw new Error('Event details not found.');
             }
 
-            console.log('EVENT DETAILS:', event);
-
             const details = [
                 `ID: ${event.id}`,
-                `Timestamp: ${event.timestamp || '--'}`,
+                `Timestamp: ${formatEventDate(event.timestamp)}`,
                 `Source IP: ${event.sourceIp || '--'}`,
                 `User: ${event.userIdentity || '--'}`,
                 `Event Type: ${event.eventType || '--'}`,
                 `Action: ${event.action || '--'}`,
                 `Severity: ${event.severity || '--'}`,
-                `Synthetic: ${event.synthetic}`,
+                `Synthetic: ${Boolean(event.synthetic)}`,
                 '',
                 'Raw Data:',
                 JSON.stringify(event.rawData || {}, null, 2)
@@ -325,20 +360,17 @@
             window.alert(details);
 
         } catch (error) {
-            console.error(
-                'Failed to load event details:',
-                error
-            );
+            console.error('Failed to load event details:', error);
 
             window.alert(
                 error.message ||
-                t('eventDetailsError', 'Unable to load event details')
+                t('eventDetailsError', 'Unable to load event details.')
             );
         }
     }
 
     // ==========================================
-    // IMPORTAR EXCEL
+    // IMPORTACIÓN EXCEL
     // ==========================================
 
     async function uploadExcel(file) {
@@ -346,8 +378,8 @@
 
         formData.append('file', file);
 
-        return await HttpClient.post(
-            ENDPOINTS.INGEST.UPLOAD_EXCEL,
+        return window.HttpClient.post(
+            window.ENDPOINTS.INGEST.UPLOAD_EXCEL,
             formData
         );
     }
@@ -376,12 +408,14 @@
     }
 
     // ==========================================
-    // EVENTO DE IMPORTACIÓN
+    // PROCESAR IMPORTACIÓN
     // ==========================================
 
     if (uploadForm) {
         uploadForm.addEventListener('submit', async event => {
             event.preventDefault();
+
+            if (uploadInProgress) return;
 
             const file = fileInput?.files?.[0];
 
@@ -393,9 +427,7 @@
                 return;
             }
 
-            const validExtension = /\.(xls|xlsx)$/i.test(file.name);
-
-            if (!validExtension) {
+            if (!/\.(xls|xlsx)$/i.test(file.name)) {
                 showUploadStatus(
                     t(
                         'invalidFile',
@@ -406,9 +438,10 @@
                 return;
             }
 
+            uploadInProgress = true;
+
             if (btnSubmit) {
                 btnSubmit.disabled = true;
-
                 btnSubmit.innerHTML = `
                     <span class="spinner-border spinner-border-sm me-2"
                           role="status"
@@ -417,20 +450,30 @@
                 `;
             }
 
-            if (uploadStatus) {
-                uploadStatus.classList.add('d-none');
-            }
+            uploadStatus?.classList.add('d-none');
 
             try {
                 const result = await uploadExcel(file);
 
-                console.log(
-                    'EXCEL INGESTION RESULT:',
-                    result
+                if (
+                    !result ||
+                    result.status !== 'success'
+                ) {
+                    throw new Error(
+                        result?.message ||
+                        'The backend did not confirm the Excel import.'
+                    );
+                }
+
+                const count = Number(
+                    result.ingestedEventsCount ??
+                    result.ingested_events_count ??
+                    0
                 );
 
                 showUploadStatus(
-                    `${t('success', 'Success')}: ${file.name}`,
+                    `${t('success', 'Success')}: ${file.name}. ` +
+                    `${count} ${t('eventsImported', 'events imported')}.`,
                     'success'
                 );
 
@@ -439,10 +482,7 @@
                 await loadEvents();
 
             } catch (error) {
-                console.error(
-                    'Excel ingestion failed:',
-                    error
-                );
+                console.error('Excel ingestion failed:', error);
 
                 showUploadStatus(
                     error.message ||
@@ -451,20 +491,21 @@
                 );
 
             } finally {
+                uploadInProgress = false;
                 resetUploadButton();
             }
         });
     }
 
     // ==========================================
-    // EVENTOS DE LA TABLA
+    // EVENTOS DE TABLA
     // ==========================================
 
     if (tbody) {
         tbody.addEventListener('click', event => {
             const button = event.target.closest('[data-event-id]');
 
-            if (!button) return;
+            if (!button || !tbody.contains(button)) return;
 
             viewEventDetails(button.dataset.eventId);
         });
@@ -482,19 +523,13 @@
     // CAMBIO DE IDIOMA
     // ==========================================
 
-    document.addEventListener(
-        'nova:languageChanged',
-        () => {
-            renderEventsTable();
+    document.addEventListener('nova:languageChanged', () => {
+        renderEventsTable();
 
-            if (btnSubmit && !btnSubmit.disabled) {
-                btnSubmit.textContent = t(
-                    'processNormalise',
-                    'Process & Normalise'
-                );
-            }
+        if (btnSubmit && !uploadInProgress) {
+            resetUploadButton();
         }
-    );
+    });
 
     // ==========================================
     // INICIALIZACIÓN

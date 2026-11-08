@@ -1,5 +1,14 @@
 
 (function () {
+    'use strict';
+
+    // ==========================================
+    // DEPENDENCIAS
+    // ==========================================
+
+    const HttpClient = window.HttpClient;
+    const ENDPOINTS = window.ENDPOINTS;
+
     const tbody = document.getElementById('table-alerts-body');
 
     const statNew = document.getElementById('stat-new-alerts');
@@ -9,17 +18,25 @@
 
     const selectAllCheckbox = document.getElementById('selectAllAlerts');
 
+    // ==========================================
+    // ESTADO
+    // ==========================================
+
     let alerts = [];
     let loading = false;
 
-    const STATUS = {
+    const STATUS = Object.freeze({
         NEW: 'NEW',
         IN_PROGRESS: 'IN_PROGRESS',
         UNDER_INVESTIGATION: 'UNDER_INVESTIGATION',
         ESCALATED: 'ESCALATED',
         RESOLVED: 'RESOLVED',
         FALSE_POSITIVE: 'FALSE_POSITIVE'
-    };
+    });
+
+    // ==========================================
+    // UTILIDADES
+    // ==========================================
 
     function t(key, fallback) {
         return typeof window.t === 'function'
@@ -90,7 +107,9 @@
 
         const date = new Date(dateValue);
 
-        if (Number.isNaN(date.getTime())) return '--';
+        if (Number.isNaN(date.getTime())) {
+            return '--';
+        }
 
         const language = document.documentElement.lang || 'en';
 
@@ -98,11 +117,14 @@
             language.startsWith('es') ? 'es-CO' : 'en-US',
             {
                 dateStyle: 'medium',
-                timeStyle: 'short',
-                timeZone: 'UTC'
+                timeStyle: 'short'
             }
-        ).format(date) + ' UTC';
+        ).format(date);
     }
+
+    // ==========================================
+    // NORMALIZACIÓN DEL DTO
+    // ==========================================
 
     function normalizeAlert(alert) {
         return {
@@ -115,7 +137,12 @@
         };
     }
 
+    // ==========================================
+    // ESTADÍSTICAS
+    // ==========================================
+
     function updateStatistics() {
+
         if (statNew) {
             statNew.textContent = alerts.filter(
                 alert => alert.status === STATUS.NEW
@@ -143,7 +170,12 @@
         }
     }
 
+    // ==========================================
+    // RENDERIZADO
+    // ==========================================
+
     function renderAlerts() {
+
         if (!tbody) return;
 
         if (loading) {
@@ -167,11 +199,16 @@
                 </tr>
             `;
 
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+            }
+
             updateStatistics();
             return;
         }
 
         tbody.innerHTML = alerts.map(alert => {
+
             const id = escapeHTML(alert.id);
 
             return `
@@ -226,6 +263,7 @@
                             </button>
 
                             <ul class="dropdown-menu dropdown-menu-end">
+
                                 <li>
                                     <button
                                         class="dropdown-item"
@@ -279,6 +317,7 @@
                                         ${t('alerts.falsePositive', 'False Positive')}
                                     </button>
                                 </li>
+
                             </ul>
                         </div>
                     </td>
@@ -289,61 +328,102 @@
         updateStatistics();
     }
 
-   async function loadAlerts() {
-    if (!tbody || typeof HttpClient === 'undefined') {
-        console.error('Alerts: HttpClient or table element not found.');
-        return;
-    }
+    // ==========================================
+    // CARGAR ALERTAS
+    // ==========================================
 
-    loading = true;
-    renderAlerts();
+    async function loadAlerts() {
 
-    let loadError = null;
+        if (!tbody) return;
 
-    try {
-        const response = await HttpClient.get(ENDPOINTS.ALERTS.LIST);
-        const page = response?.data;
-
-        if (!page || !Array.isArray(page.content)) {
-            throw new Error('Unexpected alerts API response format.');
+        if (
+            !HttpClient ||
+            !ENDPOINTS?.ALERTS?.LIST
+        ) {
+            console.error(
+                'Alerts: HTTP client or endpoint configuration unavailable.'
+            );
+            return;
         }
 
-        alerts = page.content.map(normalizeAlert);
+        if (loading) return;
 
-        if (selectAllCheckbox) {
-            selectAllCheckbox.checked = false;
-        }
+        loading = true;
+        renderAlerts();
 
-    } catch (error) {
-        console.error('Failed to load alerts:', error);
+        try {
 
-        loadError = error.message || 'Unable to load alerts';
-        alerts = [];
+            const response = await HttpClient.get(
+                ENDPOINTS.ALERTS.LIST
+            );
 
-    } finally {
-        loading = false;
+            const page = response?.data;
 
-        if (loadError) {
+            if (!page || !Array.isArray(page.content)) {
+                throw new Error(
+                    'Unexpected alerts API response format.'
+                );
+            }
+
+            alerts = page.content.map(normalizeAlert);
+
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+            }
+
+        } catch (error) {
+
+            console.error(
+                'Failed to load alerts:',
+                error
+            );
+
+            alerts = [];
+
             tbody.innerHTML = `
                 <tr>
                     <td colspan="7" class="text-center text-danger py-4">
-                        ${escapeHTML(loadError)}
+                        ${escapeHTML(
+                            error.message || 'Unable to load alerts.'
+                        )}
                     </td>
                 </tr>
             `;
-        } else {
+
+            updateStatistics();
+
+        } finally {
+
+            loading = false;
+
+        }
+
+        if (tbody && alerts.length >= 0 && tbody.querySelector('.text-danger') === null) {
             renderAlerts();
         }
     }
-}
+
+    // ==========================================
+    // ACTUALIZAR ESTADO DE ALERTA
+    // ==========================================
 
     async function updateAlertStatus(id, status) {
-        if (!id || !Object.values(STATUS).includes(status)) {
+
+        if (
+            !id ||
+            !Object.values(STATUS).includes(status)
+        ) {
             console.error('Invalid alert ID or status.');
             return;
         }
 
+        if (!HttpClient || !ENDPOINTS?.ALERTS?.UPDATE_STATUS) {
+            console.error('Alert update endpoint unavailable.');
+            return;
+        }
+
         try {
+
             await HttpClient.patch(
                 ENDPOINTS.ALERTS.UPDATE_STATUS(id),
                 { status }
@@ -352,16 +432,25 @@
             await loadAlerts();
 
         } catch (error) {
-            console.error('Failed to update alert:', error);
 
-            alert(
+            console.error(
+                'Failed to update alert:',
+                error
+            );
+
+            window.alert(
                 error.message ||
                 t('alerts.updateError', 'Unable to update alert')
             );
         }
     }
 
+    // ==========================================
+    // ACCIONES DE ALERTAS
+    // ==========================================
+
     async function handleAlertAction(action, id) {
+
         const statusByAction = {
             assign: STATUS.IN_PROGRESS,
             investigate: STATUS.UNDER_INVESTIGATION,
@@ -377,9 +466,17 @@
         await updateAlertStatus(id, status);
     }
 
+    // ==========================================
+    // EVENTOS
+    // ==========================================
+
     if (tbody) {
+
         tbody.addEventListener('click', event => {
-            const button = event.target.closest('[data-alert-action]');
+
+            const button = event.target.closest(
+                '[data-alert-action]'
+            );
 
             if (!button) return;
 
@@ -388,23 +485,16 @@
                 button.dataset.alertId
             );
         });
-    }
 
-    if (selectAllCheckbox && tbody) {
-        selectAllCheckbox.addEventListener('change', () => {
-            const checkboxes = tbody.querySelectorAll('.alert-checkbox');
-
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = selectAllCheckbox.checked;
-            });
-        });
-    }
-
-    if (tbody) {
         tbody.addEventListener('change', event => {
-            if (!event.target.classList.contains('alert-checkbox')) return;
 
-            const checkboxes = [...tbody.querySelectorAll('.alert-checkbox')];
+            if (!event.target.classList.contains('alert-checkbox')) {
+                return;
+            }
+
+            const checkboxes = [
+                ...tbody.querySelectorAll('.alert-checkbox')
+            ];
 
             if (selectAllCheckbox) {
                 selectAllCheckbox.checked =
@@ -414,11 +504,37 @@
         });
     }
 
+    if (selectAllCheckbox && tbody) {
+
+        selectAllCheckbox.addEventListener('change', () => {
+
+            const checkboxes = tbody.querySelectorAll(
+                '.alert-checkbox'
+            );
+
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
+            });
+        });
+    }
+
+    // ==========================================
+    // EXPORTACIÓN GLOBAL
+    // ==========================================
+
     window.actionAlert = handleAlertAction;
     window.renderAlerts = renderAlerts;
     window.loadAlerts = loadAlerts;
 
-    document.addEventListener('nova:languageChanged', renderAlerts);
+    document.addEventListener(
+        'nova:languageChanged',
+        renderAlerts
+    );
+
+    // ==========================================
+    // INICIALIZACIÓN
+    // ==========================================
 
     loadAlerts();
+
 })();

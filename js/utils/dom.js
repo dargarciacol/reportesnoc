@@ -1,157 +1,191 @@
 
-const DOMUtils = {
+(function () {
+    'use strict';
 
-    // =========================================================
-    // CREATE ELEMENT
-    // =========================================================
+    const DOMUtils = {
 
-    createElement: (tag, className = '', innerHTML = '') => {
-        const el = document.createElement(tag);
+        // =========================================================
+        // CREATE ELEMENT
+        // =========================================================
 
-        if (className) {
-            el.className = className;
-        }
-
-        if (innerHTML) {
-            el.innerHTML = innerHTML;
-        }
-
-        return el;
-    },
-
-    // =========================================================
-    // TOAST NOTIFICATIONS
-    // =========================================================
-
-    showToast: (message, type = 'info') => {
-
-        let toastContainer = document.getElementById(
-            'nova-toast-container'
-        );
-
-        if (!toastContainer) {
-            toastContainer = DOMUtils.createElement(
-                'div',
-                'toast-container position-fixed bottom-0 end-0 p-3'
-            );
-
-            toastContainer.id = 'nova-toast-container';
-            toastContainer.style.zIndex = '1090';
-
-            document.body.appendChild(toastContainer);
-        }
-
-        const colors = {
-            success: {
-                bg: 'rgba(34, 197, 94, 0.9)',
-                border: '#22C55E'
-            },
-
-            danger: {
-                bg: 'rgba(239, 68, 68, 0.9)',
-                border: '#EF4444'
-            },
-
-            info: {
-                bg: 'rgba(6, 182, 212, 0.9)',
-                border: '#06B6D4'
-            },
-
-            warning: {
-                bg: 'rgba(234, 179, 8, 0.9)',
-                border: '#EAB308'
+        createElement(tag, className = '', innerHTML = '') {
+            if (typeof tag !== 'string' || !tag.trim()) {
+                throw new TypeError('A valid HTML tag is required.');
             }
-        };
 
-        const theme = colors[type] || colors.info;
+            const element = document.createElement(tag);
 
-        const toastEl = DOMUtils.createElement(
-            'div',
-            'toast align-items-center text-white border-1'
-        );
+            if (className) {
+                element.className = className;
+            }
 
-        toastEl.style.backgroundColor = theme.bg;
-        toastEl.style.borderColor = theme.border;
+            if (innerHTML !== '') {
+                element.innerHTML = innerHTML;
+            }
 
-        toastEl.setAttribute('role', 'alert');
-        toastEl.setAttribute('aria-live', 'assertive');
-        toastEl.setAttribute('aria-atomic', 'true');
+            return element;
+        },
 
-        // Wrapper
-        const wrapper = document.createElement('div');
-        wrapper.className = 'd-flex';
+        // =========================================================
+        // TOAST NOTIFICATIONS
+        // =========================================================
 
-        // Message
-        const body = document.createElement('div');
-        body.className = 'toast-body fw-semibold';
-
-        // Insert as text to prevent HTML injection.
-        body.textContent = String(message ?? '');
-
-        // Close button
-        const closeButton = document.createElement('button');
-
-        closeButton.type = 'button';
-        closeButton.className =
-            'btn-close btn-close-white me-2 m-auto';
-
-        closeButton.setAttribute('aria-label', getTranslation('close', 'Close'));
-
-        wrapper.appendChild(body);
-        wrapper.appendChild(closeButton);
-
-        toastEl.appendChild(wrapper);
-        toastContainer.appendChild(toastEl);
-
-        // Bootstrap integration with fallback.
-        if (
-            window.bootstrap &&
-            typeof window.bootstrap.Toast === 'function'
-        ) {
-            const bsToast = new window.bootstrap.Toast(toastEl, {
-                autohide: true,
-                delay: 3500
-            });
-
-            closeButton.addEventListener('click', () => {
-                bsToast.hide();
-            });
-
-            toastEl.addEventListener(
-                'hidden.bs.toast',
-                () => toastEl.remove(),
-                { once: true }
+        showToast(message, type = 'info') {
+            let toastContainer = document.getElementById(
+                'nova-toast-container'
             );
 
-            bsToast.show();
+            if (!toastContainer) {
+                toastContainer = this.createElement(
+                    'div',
+                    'toast-container position-fixed bottom-0 end-0 p-3'
+                );
 
-        } else {
-            // Fallback if Bootstrap JS is unavailable.
-            toastEl.classList.add('show');
+                toastContainer.id = 'nova-toast-container';
+                toastContainer.style.zIndex = '1090';
 
-            closeButton.addEventListener('click', () => {
-                toastEl.remove();
-            });
+                document.body.appendChild(toastContainer);
+            }
 
-            window.setTimeout(() => {
-                toastEl.remove();
-            }, 3500);
+            const colors = {
+                success: {
+                    bg: 'rgba(34, 197, 94, 0.9)',
+                    border: '#22C55E'
+                },
+
+                danger: {
+                    bg: 'rgba(239, 68, 68, 0.9)',
+                    border: '#EF4444'
+                },
+
+                info: {
+                    bg: 'rgba(6, 182, 212, 0.9)',
+                    border: '#06B6D4'
+                },
+
+                warning: {
+                    bg: 'rgba(234, 179, 8, 0.9)',
+                    border: '#EAB308'
+                }
+            };
+
+            const theme = colors[type] || colors.info;
+
+            const toastEl = this.createElement(
+                'div',
+                'toast align-items-center text-white border-1'
+            );
+
+            toastEl.style.backgroundColor = theme.bg;
+            toastEl.style.borderColor = theme.border;
+
+            toastEl.setAttribute('role', 'alert');
+            toastEl.setAttribute('aria-live', 'assertive');
+            toastEl.setAttribute('aria-atomic', 'true');
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'd-flex';
+
+            const body = document.createElement('div');
+            body.className = 'toast-body fw-semibold';
+            body.textContent = String(message ?? '');
+
+            const closeButton = document.createElement('button');
+
+            closeButton.type = 'button';
+            closeButton.className =
+                'btn-close btn-close-white me-2 m-auto';
+
+            closeButton.setAttribute(
+                'aria-label',
+                getTranslation('close', 'Close')
+            );
+
+            wrapper.appendChild(body);
+            wrapper.appendChild(closeButton);
+
+            toastEl.appendChild(wrapper);
+            toastContainer.appendChild(toastEl);
+
+            // Bootstrap integration.
+            if (
+                window.bootstrap &&
+                typeof window.bootstrap.Toast === 'function'
+            ) {
+                const bsToast = new window.bootstrap.Toast(toastEl, {
+                    autohide: true,
+                    delay: 3500
+                });
+
+                closeButton.addEventListener('click', () => {
+                    bsToast.hide();
+                });
+
+                toastEl.addEventListener(
+                    'hidden.bs.toast',
+                    () => {
+                        bsToast.dispose();
+                        toastEl.remove();
+
+                        if (
+                            toastContainer.isConnected &&
+                            !toastContainer.children.length
+                        ) {
+                            toastContainer.remove();
+                        }
+                    },
+                    { once: true }
+                );
+
+                bsToast.show();
+
+            } else {
+                // Fallback without Bootstrap JS.
+                toastEl.classList.add('show');
+
+                closeButton.addEventListener('click', () => {
+                    toastEl.remove();
+                    removeEmptyContainer(toastContainer);
+                });
+
+                window.setTimeout(() => {
+                    if (toastEl.isConnected) {
+                        toastEl.remove();
+                        removeEmptyContainer(toastContainer);
+                    }
+                }, 3500);
+            }
+        }
+    };
+
+    // =========================================================
+    // TRANSLATION HELPER
+    // =========================================================
+
+    function getTranslation(key, fallback) {
+        return typeof window.t === 'function'
+            ? window.t(key, fallback) || fallback
+            : fallback;
+    }
+
+    // =========================================================
+    // CLEANUP
+    // =========================================================
+
+    function removeEmptyContainer(container) {
+        if (
+            container &&
+            container.isConnected &&
+            !container.children.length
+        ) {
+            container.remove();
         }
     }
-};
 
-// =========================================================
-// TRANSLATION HELPER
-// =========================================================
+    // =========================================================
+    // GLOBAL EXPORT
+    // =========================================================
 
-function getTranslation(key, fallback) {
-    return typeof window.t === 'function'
-        ? window.t(key, fallback) || fallback
-        : fallback;
-}
+    window.DOMUtils = DOMUtils;
 
-// =========================================================
-// GLOBAL EXPORT
-// =========================================================
-
-window.DOMUtils = DOMUtils;
+})();

@@ -3,12 +3,23 @@
     'use strict';
 
     // ==========================================
-    // STATE
+    // PREVENIR MÓDULOS DUPLICADOS
+    // ==========================================
+
+    if (typeof window.destroyCurrentModule === 'function') {
+        window.destroyCurrentModule();
+    }
+
+    // ==========================================
+    // ESTADO
     // ==========================================
 
     let incidents = [];
     let isLoading = false;
+    let isCreating = false;
     let showMyIncidents = false;
+    let isActive = true;
+    let requestVersion = 0;
 
     const severityColors = {
         CRITICAL: '#EF4444',
@@ -26,7 +37,7 @@
     };
 
     // ==========================================
-    // UTILITIES
+    // ELEMENTOS Y UTILIDADES
     // ==========================================
 
     function getElement(id) {
@@ -60,11 +71,23 @@
 
         if (Number.isNaN(date.getTime())) return '--';
 
-        return new Intl.DateTimeFormat(undefined, {
-            dateStyle: 'medium',
-            timeStyle: 'short'
-        }).format(date);
+        const language =
+            typeof window.getCurrentLanguage === 'function'
+                ? window.getCurrentLanguage()
+                : 'es';
+
+        return new Intl.DateTimeFormat(
+            language === 'en' ? 'en-US' : 'es-CO',
+            {
+                dateStyle: 'medium',
+                timeStyle: 'short'
+            }
+        ).format(date);
     }
+
+    // ==========================================
+    // TRADUCCIONES
+    // ==========================================
 
     function translateStatus(status) {
         const value = normalizeValue(status);
@@ -77,7 +100,9 @@
             CLOSED: 'closed'
         };
 
-        return t(keys[value], value || '--');
+        return keys[value]
+            ? t(keys[value], value)
+            : value || '--';
     }
 
     function translateSeverity(severity) {
@@ -90,11 +115,13 @@
             LOW: 'low'
         };
 
-        return t(keys[value], value || '--');
+        return keys[value]
+            ? t(keys[value], value)
+            : value || '--';
     }
 
     // ==========================================
-    // CURRENT USER
+    // USUARIO AUTENTICADO
     // ==========================================
 
     function getCurrentUsername() {
@@ -105,7 +132,12 @@
 
             const user = JSON.parse(storedUser);
 
-            return user?.username || null;
+            return (
+                user?.username ||
+                user?.userName ||
+                user?.login ||
+                null
+            );
 
         } catch (error) {
             console.error('Unable to read current user:', error);
@@ -114,25 +146,30 @@
     }
 
     // ==========================================
-    // INCIDENT NORMALIZATION
+    // NORMALIZACIÓN DE INCIDENTES
     // ==========================================
 
     function normalizeIncident(incident) {
+        if (!incident || !incident.id) {
+            throw new Error('Invalid incident received from backend.');
+        }
+
         return {
-            ...incident,
-            id: incident.id,
+            id: String(incident.id),
             title: incident.title || 'Untitled incident',
             description: incident.description || '',
             severity: normalizeValue(incident.severity),
             status: normalizeValue(incident.status),
             primaryHypothesis: incident.primaryHypothesis || '--',
             assignedTo: incident.assignedTo || null,
-            createdAt: incident.createdAt || null
+            confidenceLevel: incident.confidenceLevel ?? null,
+            createdAt: incident.createdAt || null,
+            updatedAt: incident.updatedAt || null
         };
     }
 
     // ==========================================
-    // FILTERS
+    // FILTRAR INCIDENTES
     // ==========================================
 
     function getFilteredIncidents() {
@@ -150,11 +187,9 @@
         const username = getCurrentUsername();
 
         return incidents.filter(incident => {
-            const id = String(incident.id || '').toLowerCase();
-            const title = String(incident.title || '').toLowerCase();
-            const description = String(
-                incident.description || ''
-            ).toLowerCase();
+            const id = incident.id.toLowerCase();
+            const title = incident.title.toLowerCase();
+            const description = incident.description.toLowerCase();
 
             const matchesSearch =
                 !search ||
@@ -171,8 +206,9 @@
             const matchesMyIncidents =
                 !showMyIncidents ||
                 (
-                    username &&
-                    incident.assignedTo === username &&
+                    username !== null &&
+                    String(incident.assignedTo || '').toLowerCase() ===
+                        username.toLowerCase() &&
                     incident.status !== 'CLOSED'
                 );
 
@@ -186,7 +222,7 @@
     }
 
     // ==========================================
-    // LOADING / ERROR / EMPTY
+    // ESTADOS DE INTERFAZ
     // ==========================================
 
     function renderLoading() {
@@ -246,10 +282,12 @@
     }
 
     // ==========================================
-    // INCIDENT CARDS
+    // RENDERIZAR INCIDENTES
     // ==========================================
 
     function renderIncidents() {
+        if (!isActive) return;
+
         const container = getElement('incidents-container');
 
         if (!container) return;
@@ -262,6 +300,8 @@
             renderEmpty();
             return;
         }
+
+        const fragment = document.createDocumentFragment();
 
         filteredIncidents.forEach(incident => {
             const severity = incident.severity;
@@ -417,45 +457,59 @@
                 </div>
             `;
 
-            container.appendChild(card);
+            fragment.appendChild(card);
         });
+
+        container.appendChild(fragment);
     }
 
     // ==========================================
-    // LOAD INCIDENTS FROM BACKEND
+    // CARGAR INCIDENTES
     // ==========================================
 
     async function loadIncidents() {
-        if (isLoading) return;
+        if (!isActive || isLoading) return;
+
+        if (!window.HttpClient || !window.ENDPOINTS) {
+            console.error(
+                'Incidents: HttpClient or ENDPOINTS not available.'
+            );
+            return;
+        }
 
         isLoading = true;
+
+        const currentRequest = ++requestVersion;
+
         renderLoading();
 
         try {
-            const response = await HttpClient.get(
-                ENDPOINTS.INCIDENTS.LIST
+            const response = await window.HttpClient.get(
+                window.ENDPOINTS.INCIDENTS.LIST
             );
 
-            if (!response || !response.data) {
-                throw new Error('Invalid incidents response.');
+            if (!isActive || currentRequest !== requestVersion) {
+                return;
             }
 
-            const data = response.data;
+            const data = response?.data;
 
-            const content = Array.isArray(data)
-                ? data
-                : data.content;
-
-            if (!Array.isArray(content)) {
+            if (!data || !Array.isArray(data.content)) {
                 throw new Error(
-                    'The backend did not return a valid incidents list.'
+                    'Invalid incidents response: expected paginated data.'
                 );
             }
 
-            incidents = content.map(normalizeIncident);
+            incidents = data.content.map(normalizeIncident);
 
         } catch (error) {
+            if (!isActive || currentRequest !== requestVersion) {
+                return;
+            }
+
             console.error('Error loading incidents:', error);
+
+            incidents = [];
 
             renderError(
                 error.message || 'Unable to load incidents.'
@@ -464,18 +518,24 @@
             return;
 
         } finally {
-            isLoading = false;
+            if (currentRequest === requestVersion) {
+                isLoading = false;
+            }
         }
 
-        renderIncidents();
+        if (isActive && currentRequest === requestVersion) {
+            renderIncidents();
+        }
     }
 
     // ==========================================
-    // CREATE INCIDENT
+    // CREAR INCIDENTE
     // ==========================================
 
     async function createIncident(event) {
         event.preventDefault();
+
+        if (!isActive || isCreating) return;
 
         const form = getElement('createIncidentForm');
 
@@ -485,7 +545,9 @@
             getElement('incidentTitle')?.value.trim();
 
         const severity =
-            getElement('incidentSeverity')?.value;
+            normalizeValue(
+                getElement('incidentSeverity')?.value
+            );
 
         const primaryHypothesis =
             getElement('incidentHypothesis')?.value.trim();
@@ -493,32 +555,52 @@
         const description =
             getElement('incidentDescription')?.value.trim();
 
-        if (!title || !severity || !primaryHypothesis) {
-            alert(t(
-                'completeRequiredFields',
-                'Please complete all required fields.'
-            ));
+        if (!title || !severity) {
+            window.alert(
+                t(
+                    'completeRequiredFields',
+                    'Please complete all required fields.'
+                )
+            );
             return;
         }
 
         const payload = {
             title,
-            description: description || null,
-            severity: normalizeValue(severity),
-            primaryHypothesis
+            severity
         };
+
+        if (description) {
+            payload.description = description;
+        }
+
+        if (primaryHypothesis) {
+            payload.primaryHypothesis = primaryHypothesis;
+        }
 
         const submitButton = form.querySelector(
             'button[type="submit"]'
         );
 
-        if (submitButton) submitButton.disabled = true;
+        isCreating = true;
+
+        if (submitButton) {
+            submitButton.disabled = true;
+        }
 
         try {
-            await HttpClient.post(
-                ENDPOINTS.INCIDENTS.CREATE,
+            const response = await window.HttpClient.post(
+                window.ENDPOINTS.INCIDENTS.CREATE,
                 payload
             );
+
+            if (!isActive) return;
+
+            if (!response?.data?.id) {
+                throw new Error(
+                    'The backend did not return the created incident.'
+                );
+            }
 
             form.reset();
 
@@ -530,13 +612,15 @@
             const statusFilter =
                 getElement('filter-status-inc');
 
-            if (statusFilter) statusFilter.value = '';
+            if (statusFilter) {
+                statusFilter.value = '';
+            }
 
             const modalElement =
                 getElement('createIncidentModal');
 
             if (modalElement && window.bootstrap) {
-                bootstrap.Modal
+                window.bootstrap.Modal
                     .getInstance(modalElement)
                     ?.hide();
             }
@@ -544,14 +628,20 @@
             await loadIncidents();
 
         } catch (error) {
+            if (!isActive) return;
+
             console.error('Error creating incident:', error);
 
-            alert(
+            window.alert(
                 error.message || 'Unable to create incident.'
             );
 
         } finally {
-            if (submitButton) submitButton.disabled = false;
+            isCreating = false;
+
+            if (submitButton && isActive) {
+                submitButton.disabled = false;
+            }
         }
     }
 
@@ -560,38 +650,46 @@
     // ==========================================
 
     function openInvestigationWorkspace(id) {
-        if (!id) return;
+        if (!isActive || !id) return;
 
         sessionStorage.setItem(
             'nova_selected_incident_id',
             id
         );
 
+        if (
+            window.NOVA &&
+            typeof window.NOVA.navigate === 'function'
+        ) {
+            window.NOVA.navigate('investigations');
+            return;
+        }
+
         const link = document.querySelector(
             '.nav-link[data-route="investigations"]'
         );
 
-        if (!link) {
-            console.error(
-                'Investigations navigation link not found.'
-            );
+        if (link) {
+            link.click();
             return;
         }
 
-        link.click();
+        console.error(
+            'Investigations route is not available.'
+        );
     }
 
     // ==========================================
-    // EVENT LISTENERS
+    // EVENT HANDLERS
     // ==========================================
 
-    document.addEventListener('submit', event => {
-        if (event.target.id === 'createIncidentForm') {
-            createIncident(event);
-        }
-    });
+    function handleSubmit(event) {
+        if (event.target.id !== 'createIncidentForm') return;
 
-    document.addEventListener('click', event => {
+        createIncident(event);
+    }
+
+    function handleClick(event) {
         if (event.target.closest('#retry-incidents')) {
             loadIncidents();
             return;
@@ -605,16 +703,19 @@
             openInvestigationWorkspace(
                 investigationButton.dataset.investigationId
             );
+            return;
         }
 
         if (event.target.closest('#btn-my-incidents')) {
             const username = getCurrentUsername();
 
             if (!username) {
-                alert(t(
-                    'userSessionUnavailable',
-                    'Unable to identify the current user session.'
-                ));
+                window.alert(
+                    t(
+                        'userSessionUnavailable',
+                        'Unable to identify the current user session.'
+                    )
+                );
                 return;
             }
 
@@ -625,30 +726,93 @@
 
             renderIncidents();
         }
-    });
+    }
 
-    document.addEventListener('input', event => {
+    function handleInput(event) {
         if (event.target.id === 'search-incidents') {
             renderIncidents();
         }
-    });
+    }
 
-    document.addEventListener('change', event => {
+    function handleChange(event) {
         if (
             event.target.id === 'filter-severity-inc' ||
             event.target.id === 'filter-status-inc'
         ) {
             renderIncidents();
         }
-    });
+    }
+
+    function handleLanguageChanged() {
+        renderIncidents();
+    }
+
+    // ==========================================
+    // LIMPIEZA DEL MÓDULO
+    // ==========================================
+
+    const previousGlobals = {
+        loadIncidents: window.loadIncidents,
+        renderIncidents: window.renderIncidents,
+        openInvestigationWorkspace:
+            window.openInvestigationWorkspace,
+        destroyCurrentModule: window.destroyCurrentModule
+    };
+
+    function cleanup() {
+        if (!isActive) return;
+
+        isActive = false;
+        requestVersion++;
+
+        document.removeEventListener('submit', handleSubmit);
+        document.removeEventListener('click', handleClick);
+        document.removeEventListener('input', handleInput);
+        document.removeEventListener('change', handleChange);
+
+        document.removeEventListener(
+            'nova:languageChanged',
+            handleLanguageChanged
+        );
+
+        if (window.loadIncidents === loadIncidents) {
+            window.loadIncidents = previousGlobals.loadIncidents;
+        }
+
+        if (window.renderIncidents === renderIncidents) {
+            window.renderIncidents = previousGlobals.renderIncidents;
+        }
+
+        if (
+            window.openInvestigationWorkspace ===
+            openInvestigationWorkspace
+        ) {
+            window.openInvestigationWorkspace =
+                previousGlobals.openInvestigationWorkspace;
+        }
+
+        if (window.destroyCurrentModule === cleanup) {
+            window.destroyCurrentModule =
+                previousGlobals.destroyCurrentModule;
+        }
+    }
+
+    // ==========================================
+    // REGISTRO DE EVENTOS
+    // ==========================================
+
+    document.addEventListener('submit', handleSubmit);
+    document.addEventListener('click', handleClick);
+    document.addEventListener('input', handleInput);
+    document.addEventListener('change', handleChange);
 
     document.addEventListener(
         'nova:languageChanged',
-        renderIncidents
+        handleLanguageChanged
     );
 
     // ==========================================
-    // PUBLIC METHODS
+    // MÉTODOS PÚBLICOS
     // ==========================================
 
     window.loadIncidents = loadIncidents;
@@ -656,8 +820,10 @@
     window.openInvestigationWorkspace =
         openInvestigationWorkspace;
 
+    window.destroyCurrentModule = cleanup;
+
     // ==========================================
-    // INITIALIZATION
+    // INICIALIZACIÓN
     // ==========================================
 
     loadIncidents();

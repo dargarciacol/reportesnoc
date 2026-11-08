@@ -2,15 +2,17 @@
 (function () {
     'use strict';
 
-    // ==========================================
-    // CONFIGURACIÓN
-    // ==========================================
+    // =========================================================
+    // CONFIGURATION
+    // =========================================================
 
     const TOKEN_KEY = 'nova_token';
 
-    // ==========================================
-    // CLASE DE ERRORES API
-    // ==========================================
+    const DEFAULT_CREDENTIALS = 'include';
+
+    // =========================================================
+    // API ERROR
+    // =========================================================
 
     class ApiError extends Error {
         constructor(message, status = null, data = null) {
@@ -22,32 +24,41 @@
         }
     }
 
-    // ==========================================
+    // =========================================================
     // HTTP CLIENT
-    // ==========================================
+    // =========================================================
 
     const HttpClient = {
-
-        // ======================================
-        // REQUEST PRINCIPAL
-        // ======================================
 
         request: async (url, options = {}) => {
 
             if (!url || typeof url !== 'string') {
-                throw new Error('A valid API URL is required.');
+                throw new ApiError(
+                    'A valid API URL is required.'
+                );
             }
 
             const headers = new Headers(options.headers || {});
 
+            // -------------------------------------------------
+            // AUTHENTICATION
+            // -------------------------------------------------
+
             const token = sessionStorage.getItem(TOKEN_KEY);
 
+            // Optional JWT support.
+            // Cookie-based authentication is handled through
+            // fetch credentials below.
             if (token) {
                 headers.set(
                     'Authorization',
                     `Bearer ${token}`
                 );
             }
+
+            // -------------------------------------------------
+            // REQUEST BODY
+            // -------------------------------------------------
 
             let body = options.body;
 
@@ -63,16 +74,24 @@
                 typeof URLSearchParams !== 'undefined' &&
                 body instanceof URLSearchParams;
 
-            // Serializar únicamente objetos JSON.
-            if (
-                body !== undefined &&
+            const isArrayBuffer =
+                typeof ArrayBuffer !== 'undefined' &&
+                body instanceof ArrayBuffer;
+
+            const isTypedArray =
+                typeof ArrayBuffer !== 'undefined' &&
+                ArrayBuffer.isView(body);
+
+            const isJsonObject =
                 body !== null &&
                 typeof body === 'object' &&
                 !isFormData &&
                 !isBlob &&
                 !isSearchParams &&
-                !(body instanceof ArrayBuffer)
-            ) {
+                !isArrayBuffer &&
+                !isTypedArray;
+
+            if (isJsonObject) {
                 headers.set(
                     'Content-Type',
                     'application/json'
@@ -81,17 +100,35 @@
                 body = JSON.stringify(body);
             }
 
-            // El navegador debe generar el boundary de multipart.
+            // The browser must generate the multipart boundary.
             if (isFormData) {
                 headers.delete('Content-Type');
             }
 
+            if (!headers.has('Accept')) {
+                headers.set('Accept', 'application/json');
+            }
+
+            // -------------------------------------------------
+            // FETCH OPTIONS
+            // -------------------------------------------------
+
             const requestOptions = {
                 ...options,
+
                 method: (options.method || 'GET').toUpperCase(),
+
                 headers,
+
+                credentials:
+                    options.credentials ?? DEFAULT_CREDENTIALS,
+
                 body
             };
+
+            // -------------------------------------------------
+            // REQUEST
+            // -------------------------------------------------
 
             try {
 
@@ -100,9 +137,17 @@
                     requestOptions
                 );
 
-                // ==================================
-                // PROCESAR RESPUESTA
-                // ==================================
+                // -------------------------------------------------
+                // EMPTY RESPONSE
+                // -------------------------------------------------
+
+                if (response.status === 204) {
+                    return null;
+                }
+
+                // -------------------------------------------------
+                // RESPONSE PARSING
+                // -------------------------------------------------
 
                 const responseText = await response.text();
 
@@ -116,9 +161,9 @@
                     }
                 }
 
-                // ==================================
-                // ERRORES HTTP
-                // ==================================
+                // -------------------------------------------------
+                // HTTP ERRORS
+                // -------------------------------------------------
 
                 if (!response.ok) {
 
@@ -128,34 +173,30 @@
                         responseData?.detail ||
                         `HTTP Error: ${response.status}`;
 
-                    if (response.status === 400) {
-                        message = message || 'Invalid request.';
-                    }
+                    switch (response.status) {
 
-                    if (response.status === 401) {
-                        message =
-                            'Unauthorized. Please authenticate again.';
+                        case 401:
+                            message =
+                                'Unauthorized. Please authenticate again.';
+                            break;
 
-                        console.error(
-                            'NOVA SIEM: Authentication expired or invalid.'
-                        );
-                    }
+                        case 403:
+                            message =
+                                'Access denied. Insufficient permissions.';
+                            break;
 
-                    if (response.status === 403) {
-                        message =
-                            'Access denied. Insufficient permissions.';
-                    }
+                        case 404:
+                            message =
+                                responseData?.message ||
+                                'Requested resource not found.';
+                            break;
 
-                    if (response.status === 404) {
-                        message =
-                            responseData?.message ||
-                            'Requested resource not found.';
-                    }
-
-                    if (response.status >= 500) {
-                        message =
-                            responseData?.message ||
-                            'Server error. Please try again later.';
+                        default:
+                            if (response.status >= 500) {
+                                message =
+                                    responseData?.message ||
+                                    'Server error. Please try again later.';
+                            }
                     }
 
                     throw new ApiError(
@@ -165,32 +206,44 @@
                     );
                 }
 
-                // ==================================
-                // RESPUESTA EXITOSA
-                // ==================================
-
                 return responseData;
 
             } catch (error) {
 
-                console.error(
-                    'API Request Failed:',
-                    {
+                // Preserve API errors and their HTTP status.
+                if (error instanceof ApiError) {
+
+                    console.error('API Request Failed:', {
                         url,
                         method: requestOptions.method,
+                        status: error.status,
                         message: error.message,
-                        status: error.status || null,
-                        data: error.data || null
-                    }
+                        data: error.data
+                    });
+
+                    throw error;
+                }
+
+                // Network, CORS, DNS and fetch errors.
+                const networkError = new ApiError(
+                    'Unable to connect to the server. Check your connection and try again.',
+                    null,
+                    error?.message || null
                 );
 
-                throw error;
+                console.error('API Network Error:', {
+                    url,
+                    method: requestOptions.method,
+                    message: error?.message
+                });
+
+                throw networkError;
             }
         },
 
-        // ======================================
+        // =====================================================
         // GET
-        // ======================================
+        // =====================================================
 
         get: (url, options = {}) =>
             HttpClient.request(url, {
@@ -198,9 +251,9 @@
                 method: 'GET'
             }),
 
-        // ======================================
+        // =====================================================
         // POST
-        // ======================================
+        // =====================================================
 
         post: (url, body, options = {}) =>
             HttpClient.request(url, {
@@ -209,9 +262,9 @@
                 body
             }),
 
-        // ======================================
+        // =====================================================
         // PUT
-        // ======================================
+        // =====================================================
 
         put: (url, body, options = {}) =>
             HttpClient.request(url, {
@@ -220,9 +273,9 @@
                 body
             }),
 
-        // ======================================
+        // =====================================================
         // PATCH
-        // ======================================
+        // =====================================================
 
         patch: (url, body, options = {}) =>
             HttpClient.request(url, {
@@ -231,9 +284,9 @@
                 body
             }),
 
-        // ======================================
+        // =====================================================
         // DELETE
-        // ======================================
+        // =====================================================
 
         delete: (url, options = {}) =>
             HttpClient.request(url, {
@@ -242,9 +295,9 @@
             })
     };
 
-    // ==========================================
-    // EXPORTAR GLOBALMENTE
-    // ==========================================
+    // =========================================================
+    // GLOBAL EXPORTS
+    // =========================================================
 
     window.HttpClient = HttpClient;
     window.ApiError = ApiError;

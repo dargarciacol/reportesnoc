@@ -3,16 +3,30 @@
     'use strict';
 
     // =========================================================
+    // PREVENIR MÓDULOS DUPLICADOS
+    // =========================================================
+
+    if (typeof window.destroyCurrentModule === 'function') {
+        window.destroyCurrentModule();
+    }
+
+    // =========================================================
     // STATE
     // =========================================================
 
     let currentInvestigation = null;
     let currentIncident = null;
+
+    // No existen endpoints REST confirmados para estas colecciones.
     let currentEvents = [];
     let currentAlerts = [];
-    let cy = null;
 
+    let cy = null;
     let isLoading = false;
+    let isSubmittingVerdict = false;
+    let isGeneratingReport = false;
+    let isActive = true;
+    let requestVersion = 0;
 
     const notebook = {
         facts: [],
@@ -38,7 +52,7 @@
             '<': '&lt;',
             '>': '&gt;',
             '"': '&quot;',
-            "'": '&#039;'
+            "'": '&#39;'
         })[char]);
     }
 
@@ -73,14 +87,24 @@
             return '--';
         }
 
-        return new Intl.DateTimeFormat(undefined, {
-            dateStyle: 'medium',
-            timeStyle: 'short'
-        }).format(date);
+        const language =
+            typeof window.getCurrentLanguage === 'function'
+                ? window.getCurrentLanguage()
+                : 'es';
+
+        return new Intl.DateTimeFormat(
+            language === 'en' ? 'en-US' : 'es-CO',
+            {
+                dateStyle: 'medium',
+                timeStyle: 'short'
+            }
+        ).format(date);
     }
 
     function getIncidentId() {
-        return sessionStorage.getItem('nova_selected_incident_id');
+        return sessionStorage.getItem(
+            'nova_selected_incident_id'
+        );
     }
 
     function getInvestigationId() {
@@ -92,7 +116,7 @@
     // =========================================================
 
     async function getApiData(url) {
-        const response = await HttpClient.get(url);
+        const response = await window.HttpClient.get(url);
 
         if (!response || response.data === undefined) {
             throw new Error('Invalid API response.');
@@ -101,21 +125,13 @@
         return response.data;
     }
 
-    function extractCollection(data) {
-        if (Array.isArray(data)) return data;
-
-        if (Array.isArray(data?.content)) {
-            return data.content;
-        }
-
-        return [];
-    }
-
     // =========================================================
     // LOAD INVESTIGATION
     // =========================================================
 
     async function loadInvestigation() {
+        if (!isActive || isLoading) return;
+
         const incidentId = getIncidentId();
 
         if (!incidentId) {
@@ -130,31 +146,57 @@
             return;
         }
 
-        if (isLoading) return;
+        if (!window.HttpClient || !window.ENDPOINTS) {
+            console.error(
+                'Investigations: HttpClient or ENDPOINTS not available.'
+            );
+            return;
+        }
 
         isLoading = true;
 
+        const currentRequest = ++requestVersion;
+
         try {
             const investigation = await getApiData(
-                ENDPOINTS.INVESTIGATIONS.BY_INCIDENT(
+                window.ENDPOINTS.INVESTIGATIONS.BY_INCIDENT(
                     encodeURIComponent(incidentId)
                 )
             );
 
+            if (!isActive || currentRequest !== requestVersion) {
+                return;
+            }
+
             if (!investigation?.id) {
-                throw new Error('Investigation not found for this incident.');
+                throw new Error(
+                    'Investigation not found for this incident.'
+                );
             }
 
             currentInvestigation = investigation;
+
+            // Investigation entity exposes the associated incident.
             currentIncident = investigation.incident || null;
 
+            // No REST endpoints currently expose related events or alerts.
+            currentEvents = [];
+            currentAlerts = [];
+
             renderInvestigation();
+
             loadNotebook();
             renderNotebook();
 
-            await loadRelatedEvidence();
+            renderTimeline();
+            renderEvidenceSummary();
+            renderGraph();
 
         } catch (error) {
+            if (!isActive || currentRequest !== requestVersion) {
+                return;
+            }
+
             console.error('Investigation loading error:', error);
 
             showMessage(
@@ -164,7 +206,9 @@
             );
 
         } finally {
-            isLoading = false;
+            if (currentRequest === requestVersion) {
+                isLoading = false;
+            }
         }
     }
 
@@ -173,11 +217,13 @@
     // =========================================================
 
     function renderInvestigation() {
+        if (!currentInvestigation) return;
+
         const incident = currentIncident || {};
 
         setText(
             getElement('investigation-incident-id'),
-            incident.id || getIncidentId()
+            incident.id || currentInvestigation.incidentId || getIncidentId()
         );
 
         setText(
@@ -202,6 +248,11 @@
         setText(
             getElement('investigation-verdict'),
             currentInvestigation.verdict
+                ? translate(
+                    normalize(currentInvestigation.verdict).toLowerCase(),
+                    currentInvestigation.verdict
+                )
+                : '--'
         );
 
         setText(
@@ -215,35 +266,54 @@
             getElement('investigation-recommended-action'),
             currentInvestigation.recommendedAction
         );
+
+        const confidenceInput = getElement('verdict-confidence');
+
+        if (
+            confidenceInput &&
+            currentInvestigation.confidenceScore != null
+        ) {
+            confidenceInput.value =
+                currentInvestigation.confidenceScore;
+
+            setText(
+                getElement('confidence-val'),
+                `${currentInvestigation.confidenceScore}%`
+            );
+        }
+
+        const verdictInput = getElement('verdict-decision');
+
+        if (verdictInput && currentInvestigation.verdict) {
+            verdictInput.value = currentInvestigation.verdict;
+        }
+
+        const actionInput = getElement('verdict-required-action');
+
+        if (actionInput && currentInvestigation.recommendedAction) {
+            actionInput.value =
+                currentInvestigation.recommendedAction;
+        }
     }
 
     // =========================================================
     // RELATED EVIDENCE
     // =========================================================
 
-    async function loadRelatedEvidence() {
-        /*
-         * The current API configuration exposes:
-         * GET /investigations/incident/{id}
-         *
-         * This endpoint must return the investigation and its
-         * associated evidence if the backend supports that relation.
-         *
-         * We do not invent an events-by-investigation endpoint.
-         */
+    function renderRelatedEvidenceUnavailable() {
+        const container = getElement('evidence-summary');
 
-        currentEvents = extractCollection(
-            currentInvestigation.events ||
-            currentInvestigation.evidence
-        );
+        if (!container) return;
 
-        currentAlerts = extractCollection(
-            currentInvestigation.alerts
-        );
-
-        renderTimeline();
-        renderEvidenceSummary();
-        renderGraph();
+        container.innerHTML = `
+            <div class="alert alert-secondary" role="status">
+                <i class="bi bi-info-circle me-2"></i>
+                ${translate(
+                    'evidenceEndpointUnavailable',
+                    'Related events and alerts are not currently exposed through the investigation API.'
+                )}
+            </div>
+        `;
     }
 
     // =========================================================
@@ -255,6 +325,7 @@
 
         const severity = normalize(event.severity);
         const action = String(event.action || '').toLowerCase();
+
         const description = String(
             raw.event_description || event.eventType || ''
         ).toLowerCase();
@@ -270,7 +341,9 @@
             description.includes('failed') ||
             description.includes('failure')
         ) {
-            findings.push('Authentication or operation failure indicator');
+            findings.push(
+                'Authentication or operation failure indicator'
+            );
         }
 
         if (
@@ -292,6 +365,11 @@
     }
 
     function renderEvidenceSummary() {
+        if (!currentEvents.length && !currentAlerts.length) {
+            renderRelatedEvidenceUnavailable();
+            return;
+        }
+
         const container = getElement('evidence-summary');
 
         if (!container) return;
@@ -305,7 +383,8 @@
         ).length;
 
         const findings = currentEvents.reduce(
-            (total, event) => total + analyzeEvidence(event).length,
+            (total, event) =>
+                total + analyzeEvidence(event).length,
             0
         );
 
@@ -356,10 +435,11 @@
         if (!currentEvents.length) {
             timelineBody.innerHTML = `
                 <tr>
-                    <td colspan="4" class="text-center text-muted py-4">
+                    <td colspan="5"
+                        class="text-center text-muted py-4">
                         ${translate(
                             'noEvidenceAvailable',
-                            'No related event evidence is available.'
+                            'No related event evidence is available through the current API.'
                         )}
                     </td>
                 </tr>
@@ -407,6 +487,11 @@
 
         if (!container) return;
 
+        if (cy) {
+            cy.destroy();
+            cy = null;
+        }
+
         if (typeof window.cytoscape !== 'function') {
             container.innerHTML = `
                 <div class="text-center text-muted p-4">
@@ -425,130 +510,63 @@
             return;
         }
 
-        if (cy) {
-            cy.destroy();
-            cy = null;
-        }
+        // Only the incident node is shown.
+        // No alert/event relationships are fabricated.
 
-        const elements = [
-            {
-                data: {
-                    id: `incident-${currentIncident.id}`,
-                    label: currentIncident.title || 'Incident',
-                    type: 'incident'
-                }
-            }
-        ];
-
-        const edges = [];
-
-        currentAlerts.forEach((alert, index) => {
-            const alertId = `alert-${alert.id || index}`;
-
-            elements.push({
-                data: {
-                    id: alertId,
-                    label: alert.ruleTriggered || 'Security alert',
-                    type: 'alert'
-                }
-            });
-
-            edges.push({
-                data: {
-                    id: `edge-alert-${index}`,
-                    source: `incident-${currentIncident.id}`,
-                    target: alertId,
-                    label: 'RELATED'
-                }
-            });
-        });
-
-        currentEvents.forEach((event, index) => {
-            const eventId = `event-${event.id || index}`;
-
-            elements.push({
-                data: {
-                    id: eventId,
-                    label: event.eventType || 'Security event',
-                    type: 'event'
-                }
-            });
-
-            edges.push({
-                data: {
-                    id: `edge-event-${index}`,
-                    source: `incident-${currentIncident.id}`,
-                    target: eventId,
-                    label: 'EVIDENCE'
-                }
-            });
-        });
+        const incidentId = `incident-${currentIncident.id}`;
 
         cy = window.cytoscape({
             container,
 
-            elements: [...elements, ...edges],
+            elements: [
+                {
+                    data: {
+                        id: incidentId,
+                        label: currentIncident.title || 'Incident',
+                        type: 'incident'
+                    }
+                }
+            ],
 
             style: [
                 {
                     selector: 'node',
                     style: {
                         'label': 'data(label)',
-                        'background-color': '#087F7C',
+                        'background-color': '#EF4444',
                         'color': '#F8FAFC',
-                        'font-size': '10px',
+                        'font-size': '11px',
                         'text-wrap': 'wrap',
-                        'text-max-width': 100,
+                        'text-max-width': 120,
                         'text-valign': 'bottom',
                         'text-halign': 'center',
-                        'text-margin-y': 8,
-                        'width': 40,
-                        'height': 40,
+                        'text-margin-y': 10,
+                        'width': 55,
+                        'height': 55,
                         'border-width': 2,
                         'border-color': '#DFE8EC'
-                    }
-                },
-                {
-                    selector: 'node[type="incident"]',
-                    style: {
-                        'background-color': '#EF4444',
-                        'width': 55,
-                        'height': 55
-                    }
-                },
-                {
-                    selector: 'node[type="alert"]',
-                    style: {
-                        'background-color': '#F97316'
-                    }
-                },
-                {
-                    selector: 'node[type="event"]',
-                    style: {
-                        'background-color': '#087F7C'
-                    }
-                },
-                {
-                    selector: 'edge',
-                    style: {
-                        'width': 2,
-                        'line-color': '#64748B',
-                        'target-arrow-color': '#64748B',
-                        'target-arrow-shape': 'triangle',
-                        'curve-style': 'bezier',
-                        'label': 'data(label)',
-                        'font-size': '8px',
-                        'color': '#CBD5E1'
                     }
                 }
             ],
 
             layout: {
-                name: 'cose',
+                name: 'grid',
                 animate: true,
                 padding: 30
             }
         });
+
+        const graphMessage = document.createElement('div');
+
+        graphMessage.className =
+            'text-center text-muted small mt-2';
+
+        graphMessage.textContent = translate(
+            'graphRelationshipsUnavailable',
+            'Related alert and event relationships are not available through the current API.'
+        );
+
+        container.parentElement?.appendChild(graphMessage);
     }
 
     // =========================================================
@@ -557,6 +575,10 @@
 
     function changeGraphLayout(name) {
         if (!cy) return;
+
+        const supportedLayouts = ['cose', 'grid'];
+
+        if (!supportedLayouts.includes(name)) return;
 
         cy.layout({
             name,
@@ -570,40 +592,48 @@
     // =========================================================
 
     function notebookStorageKey() {
-        return `nova_investigation_notebook_${getIncidentId()}`;
+        const incidentId = getIncidentId();
+
+        return incidentId
+            ? `nova_investigation_notebook_${incidentId}`
+            : null;
     }
 
     function loadNotebook() {
+        if (!currentInvestigation) return;
+
         notebook.facts = Array.isArray(
             currentInvestigation.factsNotebook
         )
-            ? currentInvestigation.factsNotebook
+            ? [...currentInvestigation.factsNotebook]
             : [];
 
         notebook.inferences = Array.isArray(
             currentInvestigation.inferencesNotebook
         )
-            ? currentInvestigation.inferencesNotebook
+            ? [...currentInvestigation.inferencesNotebook]
             : [];
 
         notebook.pending = Array.isArray(
             currentInvestigation.pendingNotebook
         )
-            ? currentInvestigation.pendingNotebook
+            ? [...currentInvestigation.pendingNotebook]
             : [];
 
         try {
-            const saved = localStorage.getItem(
-                notebookStorageKey()
-            );
+            const key = notebookStorageKey();
+
+            if (!key) return;
+
+            const saved = localStorage.getItem(key);
 
             if (!saved) return;
 
             const local = JSON.parse(saved);
 
-            for (const key of Object.keys(notebook)) {
-                if (Array.isArray(local[key])) {
-                    notebook[key] = local[key];
+            for (const property of Object.keys(notebook)) {
+                if (Array.isArray(local[property])) {
+                    notebook[property] = local[property];
                 }
             }
 
@@ -614,10 +644,15 @@
 
     function saveNotebook() {
         try {
+            const key = notebookStorageKey();
+
+            if (!key) return;
+
             localStorage.setItem(
-                notebookStorageKey(),
+                key,
                 JSON.stringify(notebook)
             );
+
         } catch (error) {
             console.error('Notebook saving error:', error);
         }
@@ -629,11 +664,15 @@
         element.innerHTML = '';
 
         if (!entries.length) {
-            element.innerHTML = `
-                <li class="text-muted small">
-                    ${translate('noNotebookEntries', 'No entries yet.')}
-                </li>
-            `;
+            const empty = document.createElement('li');
+
+            empty.className = 'text-muted small';
+            empty.textContent = translate(
+                'noNotebookEntries',
+                'No entries yet.'
+            );
+
+            element.appendChild(empty);
             return;
         }
 
@@ -643,17 +682,27 @@
             li.className =
                 'mb-2 d-flex justify-content-between align-items-start gap-2';
 
-            li.innerHTML = `
-                <span class="text-break">${escapeHTML(entry)}</span>
+            const content = document.createElement('span');
 
-                <button type="button"
-                        class="btn btn-sm btn-link text-danger p-0"
-                        data-notebook-type="${type}"
-                        data-notebook-index="${index}">
-                    <i class="bi bi-trash"></i>
-                </button>
-            `;
+            content.className = 'text-break';
+            content.textContent = entry;
 
+            const button = document.createElement('button');
+
+            button.type = 'button';
+            button.className =
+                'btn btn-sm btn-link text-danger p-0';
+
+            button.dataset.notebookType = type;
+            button.dataset.notebookIndex = String(index);
+            button.setAttribute(
+                'aria-label',
+                translate('deleteEntry', 'Delete entry')
+            );
+
+            button.innerHTML = '<i class="bi bi-trash"></i>';
+
+            li.append(content, button);
             element.appendChild(li);
         });
     }
@@ -687,7 +736,7 @@
 
         const target = types[type];
 
-        if (!target) return;
+        if (!target || !currentInvestigation) return;
 
         const prompts = {
             fact: 'Enter an observed fact:',
@@ -714,6 +763,8 @@
     async function submitVerdict(event) {
         event.preventDefault();
 
+        if (!isActive || isSubmittingVerdict) return;
+
         const investigationId = getInvestigationId();
 
         if (!investigationId) {
@@ -725,7 +776,8 @@
             return;
         }
 
-        const verdict = getElement('verdict-decision')?.value;
+        const verdict =
+            getElement('verdict-decision')?.value;
 
         const confidenceScore = Number(
             getElement('verdict-confidence')?.value
@@ -773,6 +825,7 @@
             return;
         }
 
+        // Exact backend request contract.
         const payload = {
             verdict,
             confidenceScore,
@@ -781,23 +834,28 @@
 
         const button = getElement('btn-submit-verdict');
 
+        isSubmittingVerdict = true;
+
         if (button) button.disabled = true;
 
         hideMessage(getElement('verdictStatus'));
 
         try {
-            const response = await HttpClient.post(
-                ENDPOINTS.INVESTIGATIONS.SUBMIT_VERDICT(
+            const response = await window.HttpClient.post(
+                window.ENDPOINTS.INVESTIGATIONS.SUBMIT_VERDICT(
                     investigationId
                 ),
                 payload
             );
+
+            if (!isActive) return;
 
             if (!response?.data?.id) {
                 throw new Error('Invalid verdict response.');
             }
 
             currentInvestigation = response.data;
+
             currentIncident =
                 response.data.incident || currentIncident;
 
@@ -810,6 +868,8 @@
             );
 
         } catch (error) {
+            if (!isActive) return;
+
             console.error('Verdict submission error:', error);
 
             showMessage(
@@ -819,7 +879,11 @@
             );
 
         } finally {
-            if (button) button.disabled = false;
+            isSubmittingVerdict = false;
+
+            if (button && isActive) {
+                button.disabled = false;
+            }
         }
     }
 
@@ -828,6 +892,8 @@
     // =========================================================
 
     async function generateIncidentReport() {
+        if (!isActive || isGeneratingReport) return;
+
         const incidentId = getIncidentId();
 
         if (!incidentId) {
@@ -839,11 +905,13 @@
             'btn-generate-investigation-report'
         );
 
+        isGeneratingReport = true;
+
         if (button) button.disabled = true;
 
         try {
-            const response = await HttpClient.post(
-                ENDPOINTS.REPORTS.GENERATE,
+            const response = await window.HttpClient.post(
+                window.ENDPOINTS.REPORTS.GENERATE,
                 {
                     type: 'Incident Summary',
                     format: 'PDF',
@@ -851,13 +919,19 @@
                 }
             );
 
+            if (!isActive) return;
+
             if (!response?.data) {
                 throw new Error('Invalid report response.');
             }
 
-            window.alert('Report request completed successfully.');
+            window.alert(
+                'Report request completed successfully.'
+            );
 
         } catch (error) {
+            if (!isActive) return;
+
             console.error('Report generation error:', error);
 
             window.alert(
@@ -865,27 +939,36 @@
             );
 
         } finally {
-            if (button) button.disabled = false;
+            isGeneratingReport = false;
+
+            if (button && isActive) {
+                button.disabled = false;
+            }
         }
     }
 
     // =========================================================
-    // EVENT LISTENERS
+    // EVENT HANDLERS
     // =========================================================
 
-    document.addEventListener('click', event => {
+    function handleClick(event) {
         if (event.target.closest('#btn-layout-cose')) {
             changeGraphLayout('cose');
+            return;
         }
 
         if (event.target.closest('#btn-layout-grid')) {
             changeGraphLayout('grid');
+            return;
         }
 
-        const addButton = event.target.closest('[data-add-notebook]');
+        const addButton = event.target.closest(
+            '[data-add-notebook]'
+        );
 
         if (addButton) {
             addNotebookEntry(addButton.dataset.addNotebook);
+            return;
         }
 
         const deleteButton = event.target.closest(
@@ -894,51 +977,165 @@
 
         if (deleteButton) {
             const type = deleteButton.dataset.notebookType;
-            const index = Number(deleteButton.dataset.notebookIndex);
+            const index = Number(
+                deleteButton.dataset.notebookIndex
+            );
 
             if (!Array.isArray(notebook[type])) return;
-            if (!Number.isInteger(index) || index < 0) return;
+
+            if (
+                !Number.isInteger(index) ||
+                index < 0 ||
+                index >= notebook[type].length
+            ) {
+                return;
+            }
 
             notebook[type].splice(index, 1);
 
             saveNotebook();
             renderNotebook();
         }
-    });
+    }
 
-    getElement('verdictForm')
-        ?.addEventListener('submit', submitVerdict);
+    function handleConfidenceInput(event) {
+        setText(
+            getElement('confidence-val'),
+            `${event.target.value}%`
+        );
+    }
 
-    getElement('verdict-confidence')
-        ?.addEventListener('input', event => {
-            setText(
-                getElement('confidence-val'),
-                `${event.target.value}%`
-            );
-        });
+    function handleLanguageChanged() {
+        renderInvestigation();
+        renderTimeline();
+        renderEvidenceSummary();
+        renderNotebook();
+    }
 
-    getElement('btn-generate-investigation-report')
-        ?.addEventListener('click', generateIncidentReport);
+    // =========================================================
+    // EVENT LISTENER REGISTRATION
+    // =========================================================
+
+    const verdictForm = getElement('verdictForm');
+    const confidenceInput = getElement('verdict-confidence');
+    const reportButton = getElement(
+        'btn-generate-investigation-report'
+    );
+
+    document.addEventListener('click', handleClick);
+
+    verdictForm?.addEventListener(
+        'submit',
+        submitVerdict
+    );
+
+    confidenceInput?.addEventListener(
+        'input',
+        handleConfidenceInput
+    );
+
+    reportButton?.addEventListener(
+        'click',
+        generateIncidentReport
+    );
 
     document.addEventListener(
         'nova:languageChanged',
-        () => {
-            renderInvestigation();
-            renderTimeline();
-            renderEvidenceSummary();
-            renderNotebook();
-        }
+        handleLanguageChanged
     );
 
     // =========================================================
     // PUBLIC API
     // =========================================================
 
+    const previousGlobals = {
+        loadInvestigation: window.loadInvestigation,
+        renderInvestigation: window.renderInvestigation,
+        renderInvestigationTimeline:
+            window.renderInvestigationTimeline,
+        renderInvestigationGraph:
+            window.renderInvestigationGraph,
+        addNotebookEntry: window.addNotebookEntry,
+        destroyCurrentModule: window.destroyCurrentModule
+    };
+
     window.loadInvestigation = loadInvestigation;
     window.renderInvestigation = renderInvestigation;
     window.renderInvestigationTimeline = renderTimeline;
     window.renderInvestigationGraph = renderGraph;
     window.addNotebookEntry = addNotebookEntry;
+
+    // =========================================================
+    // CLEANUP
+    // =========================================================
+
+    function cleanup() {
+        if (!isActive) return;
+
+        isActive = false;
+        requestVersion++;
+
+        document.removeEventListener('click', handleClick);
+
+        verdictForm?.removeEventListener(
+            'submit',
+            submitVerdict
+        );
+
+        confidenceInput?.removeEventListener(
+            'input',
+            handleConfidenceInput
+        );
+
+        reportButton?.removeEventListener(
+            'click',
+            generateIncidentReport
+        );
+
+        document.removeEventListener(
+            'nova:languageChanged',
+            handleLanguageChanged
+        );
+
+        if (cy) {
+            cy.destroy();
+            cy = null;
+        }
+
+        if (window.loadInvestigation === loadInvestigation) {
+            window.loadInvestigation =
+                previousGlobals.loadInvestigation;
+        }
+
+        if (window.renderInvestigation === renderInvestigation) {
+            window.renderInvestigation =
+                previousGlobals.renderInvestigation;
+        }
+
+        if (
+            window.renderInvestigationTimeline === renderTimeline
+        ) {
+            window.renderInvestigationTimeline =
+                previousGlobals.renderInvestigationTimeline;
+        }
+
+        if (window.renderInvestigationGraph === renderGraph) {
+            window.renderInvestigationGraph =
+                previousGlobals.renderInvestigationGraph;
+        }
+
+        if (window.addNotebookEntry === addNotebookEntry) {
+            window.addNotebookEntry =
+                previousGlobals.addNotebookEntry;
+        }
+
+        if (window.destroyCurrentModule === cleanup) {
+            window.destroyCurrentModule =
+                previousGlobals.destroyCurrentModule;
+        }
+    }
+
+    window.destroyCurrentModule = cleanup;
 
     // =========================================================
     // INITIALIZATION
