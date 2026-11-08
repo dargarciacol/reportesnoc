@@ -1,116 +1,252 @@
 
-const HttpClient = {
+(function () {
+    'use strict';
 
-    request: async (url, options = {}) => {
+    // ==========================================
+    // CONFIGURACIÓN
+    // ==========================================
 
-        const headers = new Headers(options.headers || {});
+    const TOKEN_KEY = 'nova_token';
 
-        const token = sessionStorage.getItem('nova_token');
+    // ==========================================
+    // CLASE DE ERRORES API
+    // ==========================================
 
-        if (token) {
-            headers.set('Authorization', `Bearer ${token}`);
+    class ApiError extends Error {
+        constructor(message, status = null, data = null) {
+            super(message);
+
+            this.name = 'ApiError';
+            this.status = status;
+            this.data = data;
         }
+    }
 
-        let body = options.body;
+    // ==========================================
+    // HTTP CLIENT
+    // ==========================================
 
-        if (
-            body &&
-            typeof body === 'object' &&
-            !(body instanceof FormData)
-        ) {
-            headers.set('Content-Type', 'application/json');
-            body = JSON.stringify(body);
-        }
+    const HttpClient = {
 
-        if (body instanceof FormData) {
-            headers.delete('Content-Type');
-        }
+        // ======================================
+        // REQUEST PRINCIPAL
+        // ======================================
 
-        try {
+        request: async (url, options = {}) => {
 
-            const response = await fetch(url, {
-                ...options,
-                headers,
-                body
-            });
-
-            const responseText = await response.text();
-
-            let responseData = null;
-
-            if (responseText) {
-                try {
-                    responseData = JSON.parse(responseText);
-                } catch {
-                    responseData = responseText;
-                }
+            if (!url || typeof url !== 'string') {
+                throw new Error('A valid API URL is required.');
             }
 
-            if (!response.ok) {
+            const headers = new Headers(options.headers || {});
 
-                const message =
-                    responseData?.message ||
-                    responseData?.error ||
-                    `HTTP Error: ${response.status}`;
+            const token = sessionStorage.getItem(TOKEN_KEY);
 
-                const error = new Error(message);
+            if (token) {
+                headers.set(
+                    'Authorization',
+                    `Bearer ${token}`
+                );
+            }
 
-                error.status = response.status;
-                error.data = responseData;
+            let body = options.body;
 
-                if (response.status === 401) {
-                    error.message = 'Unauthorized. Please authenticate again.';
+            const isFormData =
+                typeof FormData !== 'undefined' &&
+                body instanceof FormData;
+
+            const isBlob =
+                typeof Blob !== 'undefined' &&
+                body instanceof Blob;
+
+            const isSearchParams =
+                typeof URLSearchParams !== 'undefined' &&
+                body instanceof URLSearchParams;
+
+            // Serializar únicamente objetos JSON.
+            if (
+                body !== undefined &&
+                body !== null &&
+                typeof body === 'object' &&
+                !isFormData &&
+                !isBlob &&
+                !isSearchParams &&
+                !(body instanceof ArrayBuffer)
+            ) {
+                headers.set(
+                    'Content-Type',
+                    'application/json'
+                );
+
+                body = JSON.stringify(body);
+            }
+
+            // El navegador debe generar el boundary de multipart.
+            if (isFormData) {
+                headers.delete('Content-Type');
+            }
+
+            const requestOptions = {
+                ...options,
+                method: (options.method || 'GET').toUpperCase(),
+                headers,
+                body
+            };
+
+            try {
+
+                const response = await fetch(
+                    url,
+                    requestOptions
+                );
+
+                // ==================================
+                // PROCESAR RESPUESTA
+                // ==================================
+
+                const responseText = await response.text();
+
+                let responseData = null;
+
+                if (responseText) {
+                    try {
+                        responseData = JSON.parse(responseText);
+                    } catch {
+                        responseData = responseText;
+                    }
                 }
+
+                // ==================================
+                // ERRORES HTTP
+                // ==================================
+
+                if (!response.ok) {
+
+                    let message =
+                        responseData?.message ||
+                        responseData?.error ||
+                        responseData?.detail ||
+                        `HTTP Error: ${response.status}`;
+
+                    if (response.status === 400) {
+                        message = message || 'Invalid request.';
+                    }
+
+                    if (response.status === 401) {
+                        message =
+                            'Unauthorized. Please authenticate again.';
+
+                        console.error(
+                            'NOVA SIEM: Authentication expired or invalid.'
+                        );
+                    }
+
+                    if (response.status === 403) {
+                        message =
+                            'Access denied. Insufficient permissions.';
+                    }
+
+                    if (response.status === 404) {
+                        message =
+                            responseData?.message ||
+                            'Requested resource not found.';
+                    }
+
+                    if (response.status >= 500) {
+                        message =
+                            responseData?.message ||
+                            'Server error. Please try again later.';
+                    }
+
+                    throw new ApiError(
+                        message,
+                        response.status,
+                        responseData
+                    );
+                }
+
+                // ==================================
+                // RESPUESTA EXITOSA
+                // ==================================
+
+                return responseData;
+
+            } catch (error) {
+
+                console.error(
+                    'API Request Failed:',
+                    {
+                        url,
+                        method: requestOptions.method,
+                        message: error.message,
+                        status: error.status || null,
+                        data: error.data || null
+                    }
+                );
 
                 throw error;
             }
+        },
 
-            return responseData;
+        // ======================================
+        // GET
+        // ======================================
 
-        } catch (error) {
+        get: (url, options = {}) =>
+            HttpClient.request(url, {
+                ...options,
+                method: 'GET'
+            }),
 
-            console.error('API Request Failed:', {
-                url,
-                message: error.message,
-                status: error.status || null
-            });
+        // ======================================
+        // POST
+        // ======================================
 
-            throw error;
-        }
-    },
+        post: (url, body, options = {}) =>
+            HttpClient.request(url, {
+                ...options,
+                method: 'POST',
+                body
+            }),
 
-    get: (url, options = {}) =>
-        HttpClient.request(url, {
-            ...options,
-            method: 'GET'
-        }),
+        // ======================================
+        // PUT
+        // ======================================
 
-    post: (url, body, options = {}) =>
-        HttpClient.request(url, {
-            ...options,
-            method: 'POST',
-            body
-        }),
+        put: (url, body, options = {}) =>
+            HttpClient.request(url, {
+                ...options,
+                method: 'PUT',
+                body
+            }),
 
-    put: (url, body, options = {}) =>
-        HttpClient.request(url, {
-            ...options,
-            method: 'PUT',
-            body
-        }),
+        // ======================================
+        // PATCH
+        // ======================================
 
-    patch: (url, body, options = {}) =>
-        HttpClient.request(url, {
-            ...options,
-            method: 'PATCH',
-            body
-        }),
+        patch: (url, body, options = {}) =>
+            HttpClient.request(url, {
+                ...options,
+                method: 'PATCH',
+                body
+            }),
 
-    delete: (url, options = {}) =>
-        HttpClient.request(url, {
-            ...options,
-            method: 'DELETE'
-        })
-};
+        // ======================================
+        // DELETE
+        // ======================================
 
-window.HttpClient = HttpClient;
+        delete: (url, options = {}) =>
+            HttpClient.request(url, {
+                ...options,
+                method: 'DELETE'
+            })
+    };
+
+    // ==========================================
+    // EXPORTAR GLOBALMENTE
+    // ==========================================
+
+    window.HttpClient = HttpClient;
+    window.ApiError = ApiError;
+
+})();
