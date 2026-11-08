@@ -1,19 +1,37 @@
 
 (function () {
+    'use strict';
+
+    // ==========================================
+    // ELEMENTOS DEL DOM
+    // ==========================================
+
     const tbody = document.getElementById('table-events-body');
     const uploadForm = document.getElementById('uploadForm');
     const uploadStatus = document.getElementById('uploadStatus');
     const btnSubmit = document.getElementById('btn-submit-upload');
     const fileInput = document.getElementById('fileInput');
 
+    // ==========================================
+    // ESTADO
+    // ==========================================
+
     let events = [];
     let loading = false;
+
+    // ==========================================
+    // TRADUCCIONES
+    // ==========================================
 
     function t(key, fallback) {
         return typeof window.t === 'function'
             ? window.t(key, fallback) || fallback
             : fallback;
     }
+
+    // ==========================================
+    // SEGURIDAD HTML
+    // ==========================================
 
     function escapeHTML(value) {
         return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -25,16 +43,25 @@
         })[character]);
     }
 
+    // ==========================================
+    // TRADUCCIÓN DE SEVERIDAD
+    // ==========================================
+
     function translateSeverity(severity) {
         const keys = {
             CRITICAL: 'critical',
             HIGH: 'high',
             MEDIUM: 'medium',
-            LOW: 'low'
+            LOW: 'low',
+            INFO: 'info'
         };
 
-        return t(keys[severity], severity);
+        return t(keys[severity], severity || '--');
     }
+
+    // ==========================================
+    // TRADUCCIÓN DE TIPO DE EVENTO
+    // ==========================================
 
     function translateEventType(type) {
         const keys = {
@@ -46,8 +73,12 @@
             'Data Ingestion': 'dataIngestion'
         };
 
-        return t(keys[type], type);
+        return t(keys[type], type || '--');
     }
+
+    // ==========================================
+    // TRADUCCIÓN DE ACCIÓN
+    // ==========================================
 
     function translateEventAction(action) {
         const keys = {
@@ -57,19 +88,28 @@
             'Excel File Processed': 'excelFileProcessed'
         };
 
-        return t(keys[action], action);
+        return t(keys[action], action || '--');
     }
+
+    // ==========================================
+    // COLORES DE SEVERIDAD
+    // ==========================================
 
     function getSeverityColor(severity) {
         const colors = {
             CRITICAL: '#EF4444',
             HIGH: '#F97316',
             MEDIUM: '#EAB308',
-            LOW: '#06B6D4'
+            LOW: '#06B6D4',
+            INFO: '#06B6D4'
         };
 
         return colors[severity] || '#6B7280';
     }
+
+    // ==========================================
+    // FORMATO DE FECHA
+    // ==========================================
 
     function formatEventDate(dateValue) {
         if (!dateValue) return '--';
@@ -92,6 +132,10 @@
         ).format(date);
     }
 
+    // ==========================================
+    // NORMALIZACIÓN DE EVENTOS
+    // ==========================================
+
     function normalizeEvent(event) {
         return {
             id: event.id,
@@ -105,6 +149,10 @@
             synthetic: event.synthetic
         };
     }
+
+    // ==========================================
+    // RENDERIZAR TABLA
+    // ==========================================
 
     function renderEventsTable() {
         if (!tbody) return;
@@ -134,7 +182,6 @@
 
         tbody.innerHTML = events.map(evt => {
             const color = getSeverityColor(evt.severity);
-
             const action = translateEventAction(evt.action);
 
             return `
@@ -185,9 +232,15 @@
         }).join('');
     }
 
+    // ==========================================
+    // CARGAR EVENTOS DESDE EL BACKEND
+    // ==========================================
+
     async function loadEvents() {
         if (!tbody || typeof HttpClient === 'undefined') {
-            console.error('Events: HttpClient or table element not found.');
+            console.error(
+                'Events: HttpClient or table element not found.'
+            );
             return;
         }
 
@@ -195,33 +248,49 @@
         renderEventsTable();
 
         try {
-            const response = await HttpClient.get(ENDPOINTS.EVENTS.LIST);
+            const response = await HttpClient.get(
+                ENDPOINTS.EVENTS.LIST
+            );
 
             const page = response?.data;
 
             if (!page || !Array.isArray(page.content)) {
-                throw new Error('Unexpected events API response format.');
+                throw new Error(
+                    'Unexpected events API response format.'
+                );
             }
 
             events = page.content.map(normalizeEvent);
 
-            renderEventsTable();
-
         } catch (error) {
             console.error('Failed to load events:', error);
+
+            events = [];
+
+            loading = false;
 
             tbody.innerHTML = `
                 <tr>
                     <td colspan="7" class="text-center text-danger py-4">
-                        ${escapeHTML(error.message || 'Unable to load events')}
+                        ${escapeHTML(
+                            error.message || 'Unable to load events'
+                        )}
                     </td>
                 </tr>
             `;
 
+            return;
+
         } finally {
             loading = false;
         }
+
+        renderEventsTable();
     }
+
+    // ==========================================
+    // DETALLES DEL EVENTO
+    // ==========================================
 
     async function viewEventDetails(id) {
         if (!id) return;
@@ -256,7 +325,10 @@
             window.alert(details);
 
         } catch (error) {
-            console.error('Failed to load event details:', error);
+            console.error(
+                'Failed to load event details:',
+                error
+            );
 
             window.alert(
                 error.message ||
@@ -265,18 +337,24 @@
         }
     }
 
+    // ==========================================
+    // IMPORTAR EXCEL
+    // ==========================================
+
     async function uploadExcel(file) {
         const formData = new FormData();
 
         formData.append('file', file);
 
-        const response = await HttpClient.post(
+        return await HttpClient.post(
             ENDPOINTS.INGEST.UPLOAD_EXCEL,
             formData
         );
-
-        return response;
     }
+
+    // ==========================================
+    // ESTADO DE IMPORTACIÓN
+    // ==========================================
 
     function showUploadStatus(message, type) {
         if (!uploadStatus) return;
@@ -290,11 +368,16 @@
         if (!btnSubmit) return;
 
         btnSubmit.disabled = false;
+
         btnSubmit.textContent = t(
             'processNormalise',
             'Process & Normalise'
         );
     }
+
+    // ==========================================
+    // EVENTO DE IMPORTACIÓN
+    // ==========================================
 
     if (uploadForm) {
         uploadForm.addEventListener('submit', async event => {
@@ -314,7 +397,10 @@
 
             if (!validExtension) {
                 showUploadStatus(
-                    t('invalidFile', 'Only Excel files (.xls, .xlsx) are supported.'),
+                    t(
+                        'invalidFile',
+                        'Only Excel files (.xls, .xlsx) are supported.'
+                    ),
                     'danger'
                 );
                 return;
@@ -322,6 +408,7 @@
 
             if (btnSubmit) {
                 btnSubmit.disabled = true;
+
                 btnSubmit.innerHTML = `
                     <span class="spinner-border spinner-border-sm me-2"
                           role="status"
@@ -337,7 +424,10 @@
             try {
                 const result = await uploadExcel(file);
 
-                console.log('EXCEL INGESTION RESULT:', result);
+                console.log(
+                    'EXCEL INGESTION RESULT:',
+                    result
+                );
 
                 showUploadStatus(
                     `${t('success', 'Success')}: ${file.name}`,
@@ -349,7 +439,10 @@
                 await loadEvents();
 
             } catch (error) {
-                console.error('Excel ingestion failed:', error);
+                console.error(
+                    'Excel ingestion failed:',
+                    error
+                );
 
                 showUploadStatus(
                     error.message ||
@@ -363,6 +456,10 @@
         });
     }
 
+    // ==========================================
+    // EVENTOS DE LA TABLA
+    // ==========================================
+
     if (tbody) {
         tbody.addEventListener('click', event => {
             const button = event.target.closest('[data-event-id]');
@@ -373,20 +470,35 @@
         });
     }
 
+    // ==========================================
+    // FUNCIONES GLOBALES
+    // ==========================================
+
     window.viewEventDetails = viewEventDetails;
     window.loadEvents = loadEvents;
     window.renderEventsTable = renderEventsTable;
 
-    document.addEventListener('nova:languageChanged', () => {
-        renderEventsTable();
+    // ==========================================
+    // CAMBIO DE IDIOMA
+    // ==========================================
 
-        if (btnSubmit && !btnSubmit.disabled) {
-            btnSubmit.textContent = t(
-                'processNormalise',
-                'Process & Normalise'
-            );
+    document.addEventListener(
+        'nova:languageChanged',
+        () => {
+            renderEventsTable();
+
+            if (btnSubmit && !btnSubmit.disabled) {
+                btnSubmit.textContent = t(
+                    'processNormalise',
+                    'Process & Normalise'
+                );
+            }
         }
-    });
+    );
+
+    // ==========================================
+    // INICIALIZACIÓN
+    // ==========================================
 
     loadEvents();
 
