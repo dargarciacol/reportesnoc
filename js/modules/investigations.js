@@ -11,7 +11,7 @@
     }
 
     // =========================================================
-    // STATE
+    // ESTADO
     // =========================================================
 
     let currentInvestigation = null;
@@ -21,8 +21,11 @@
     let currentEvents = [];
     let currentAlerts = [];
 
+    let investigationAnalysis = null;
+
     let cy = null;
     let isLoading = false;
+    let reloadRequested = false;
     let isSubmittingVerdict = false;
     let isGeneratingReport = false;
     let isActive = true;
@@ -32,6 +35,19 @@
         facts: [],
         inferences: [],
         pending: []
+    };
+
+    const previousGlobals = {
+        loadInvestigation: window.loadInvestigation,
+        renderInvestigation: window.renderInvestigation,
+        renderInvestigationTimeline:
+            window.renderInvestigationTimeline,
+        renderInvestigationGraph:
+            window.renderInvestigationGraph,
+        addNotebookEntry: window.addNotebookEntry,
+        getInvestigationAnalysis:
+            window.getInvestigationAnalysis,
+        destroyCurrentModule: window.destroyCurrentModule
     };
 
     // =========================================================
@@ -126,11 +142,142 @@
     }
 
     // =========================================================
+    // NORMALIZACIÓN
+    // =========================================================
+
+    function normalizeIncident(incident) {
+        if (!incident || !incident.id) {
+            return null;
+        }
+
+        return {
+            ...incident,
+            id: String(incident.id),
+            severity: normalize(incident.severity),
+            status: normalize(incident.status),
+            assignedTo: incident.assignedTo || null
+        };
+    }
+
+    // =========================================================
+    // ANÁLISIS DE LA INVESTIGACIÓN
+    // =========================================================
+
+    function analyzeInvestigation() {
+        if (!currentInvestigation) {
+            investigationAnalysis = null;
+            return null;
+        }
+
+        const investigation = currentInvestigation;
+        const incident = currentIncident || {};
+
+        const verdict = normalize(investigation.verdict);
+        const confidence = Number(investigation.confidenceScore);
+
+        const hasVerdict = Boolean(verdict);
+        const hasConfidence =
+            investigation.confidenceScore !== null &&
+            investigation.confidenceScore !== undefined &&
+            Number.isFinite(confidence);
+
+        const hasRecommendedAction = Boolean(
+            String(investigation.recommendedAction || '').trim()
+        );
+
+        const pendingNotebookEntries = notebook.pending.length;
+
+        const analysis = {
+            investigationId: investigation.id,
+            incidentId: incident.id || investigation.incidentId || getIncidentId(),
+
+            incidentSeverity: normalize(incident.severity) || null,
+            incidentStatus: normalize(incident.status) || null,
+
+            verdict: verdict || null,
+            hasVerdict,
+
+            confidenceScore: hasConfidence ? confidence : null,
+
+            confidenceLevel: !hasConfidence
+                ? 'NOT_SET'
+                : confidence >= 80
+                    ? 'HIGH'
+                    : confidence >= 50
+                        ? 'MEDIUM'
+                        : 'LOW',
+
+            recommendedAction: hasRecommendedAction
+                ? investigation.recommendedAction
+                : null,
+
+            hasRecommendedAction,
+
+            notebook: {
+                facts: notebook.facts.length,
+                inferences: notebook.inferences.length,
+                pending: pendingNotebookEntries,
+                total:
+                    notebook.facts.length +
+                    notebook.inferences.length +
+                    pendingNotebookEntries
+            },
+
+            evidence: {
+                relatedEvents: currentEvents.length,
+                relatedAlerts: currentAlerts.length,
+                available: currentEvents.length > 0 ||
+                    currentAlerts.length > 0
+            },
+
+            completeness: {
+                verdict: hasVerdict,
+                confidence: hasConfidence,
+                recommendedAction: hasRecommendedAction
+            },
+
+            analyzedAt: new Date().toISOString()
+        };
+
+        analysis.completedSections = Object.values(
+            analysis.completeness
+        ).filter(Boolean).length;
+
+        analysis.totalSections = Object.keys(
+            analysis.completeness
+        ).length;
+
+        analysis.completionPercentage = Math.round(
+            (
+                analysis.completedSections /
+                analysis.totalSections
+            ) * 100
+        );
+
+        investigationAnalysis = analysis;
+
+        window.investigationAnalysis = analysis;
+
+        document.dispatchEvent(
+            new CustomEvent('nova:investigation-analyzed', {
+                detail: analysis
+            })
+        );
+
+        return analysis;
+    }
+
+    // =========================================================
     // LOAD INVESTIGATION
     // =========================================================
 
     async function loadInvestigation() {
-        if (!isActive || isLoading) return;
+        if (!isActive) return;
+
+        if (isLoading) {
+            reloadRequested = true;
+            return;
+        }
 
         const incidentId = getIncidentId();
 
@@ -158,9 +305,11 @@
         const currentRequest = ++requestVersion;
 
         try {
+            // ENDPOINTS ya realiza la codificación del identificador.
+            // No debemos aplicar encodeURIComponent dos veces.
             const investigation = await getApiData(
                 window.ENDPOINTS.INVESTIGATIONS.BY_INCIDENT(
-                    encodeURIComponent(incidentId)
+                    incidentId
                 )
             );
 
@@ -176,18 +325,23 @@
 
             currentInvestigation = investigation;
 
-            // Investigation entity exposes the associated incident.
-            currentIncident = investigation.incident || null;
+            // La investigación puede incluir el incidente asociado.
+            currentIncident = normalizeIncident(
+                investigation.incident
+            );
 
-            // No REST endpoints currently expose related events or alerts.
+            // No hay endpoints confirmados para recuperar
+            // eventos y alertas relacionados.
             currentEvents = [];
             currentAlerts = [];
 
             renderInvestigation();
 
             loadNotebook();
-            renderNotebook();
 
+            analyzeInvestigation();
+
+            renderNotebook();
             renderTimeline();
             renderEvidenceSummary();
             renderGraph();
@@ -208,6 +362,11 @@
         } finally {
             if (currentRequest === requestVersion) {
                 isLoading = false;
+
+                if (isActive && reloadRequested) {
+                    reloadRequested = false;
+                    loadInvestigation();
+                }
             }
         }
     }
@@ -223,7 +382,9 @@
 
         setText(
             getElement('investigation-incident-id'),
-            incident.id || currentInvestigation.incidentId || getIncidentId()
+            incident.id ||
+                currentInvestigation.incidentId ||
+                getIncidentId()
         );
 
         setText(
@@ -305,9 +466,68 @@
 
         if (!container) return;
 
+        const analysis = investigationAnalysis;
+
         container.innerHTML = `
-            <div class="alert alert-secondary" role="status">
+            <div class="row g-3">
+
+                <div class="col-6 col-lg-3">
+                    <div class="card bg-surface border-panel p-3 h-100">
+                        <div class="text-muted small">
+                            ${translate('investigationProgress', 'Investigation completeness')}
+                        </div>
+
+                        <div class="fs-3 fw-bold">
+                            ${analysis?.completionPercentage ?? 0}%
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-6 col-lg-3">
+                    <div class="card bg-surface border-panel p-3 h-100">
+                        <div class="text-muted small">
+                            ${translate('verdictStatus', 'Verdict')}
+                        </div>
+
+                        <div class="fs-6 fw-bold">
+                            ${analysis?.hasVerdict
+                                ? escapeHTML(analysis.verdict)
+                                : translate('pending', 'Pending')}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-6 col-lg-3">
+                    <div class="card bg-surface border-panel p-3 h-100">
+                        <div class="text-muted small">
+                            ${translate('confidence', 'Confidence')}
+                        </div>
+
+                        <div class="fs-3 fw-bold">
+                            ${analysis?.confidenceScore != null
+                                ? `${analysis.confidenceScore}%`
+                                : '--'}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-6 col-lg-3">
+                    <div class="card bg-surface border-panel p-3 h-100">
+                        <div class="text-muted small">
+                            ${translate('pendingActions', 'Pending actions')}
+                        </div>
+
+                        <div class="fs-3 fw-bold">
+                            ${analysis?.notebook.pending ?? 0}
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="alert alert-secondary mt-3" role="status">
                 <i class="bi bi-info-circle me-2"></i>
+
                 ${translate(
                     'evidenceEndpointUnavailable',
                     'Related events and alerts are not currently exposed through the investigation API.'
@@ -492,6 +712,9 @@
             cy = null;
         }
 
+        // Evita duplicar el mensaje al volver a renderizar el gráfico.
+        getElement('investigation-graph-message')?.remove();
+
         if (typeof window.cytoscape !== 'function') {
             container.innerHTML = `
                 <div class="text-center text-muted p-4">
@@ -510,8 +733,8 @@
             return;
         }
 
-        // Only the incident node is shown.
-        // No alert/event relationships are fabricated.
+        // Solo se representa el incidente recuperado del backend.
+        // No se inventan relaciones con alertas o eventos.
 
         const incidentId = `incident-${currentIncident.id}`;
 
@@ -558,6 +781,7 @@
 
         const graphMessage = document.createElement('div');
 
+        graphMessage.id = 'investigation-graph-message';
         graphMessage.className =
             'text-center text-muted small mt-2';
 
@@ -753,7 +977,9 @@
         notebook[target].push(value.trim());
 
         saveNotebook();
+        analyzeInvestigation();
         renderNotebook();
+        renderEvidenceSummary();
     }
 
     // =========================================================
@@ -825,7 +1051,7 @@
             return;
         }
 
-        // Exact backend request contract.
+        // Contrato exacto del backend.
         const payload = {
             verdict,
             confidenceScore,
@@ -857,14 +1083,30 @@
             currentInvestigation = response.data;
 
             currentIncident =
-                response.data.incident || currentIncident;
+                normalizeIncident(response.data.incident) ||
+                currentIncident;
 
             renderInvestigation();
+
+            loadNotebook();
+            analyzeInvestigation();
+            renderNotebook();
+            renderEvidenceSummary();
 
             showMessage(
                 getElement('verdictStatus'),
                 'Verdict submitted successfully.',
                 'success'
+            );
+
+            document.dispatchEvent(
+                new CustomEvent('nova:data-updated', {
+                    detail: {
+                        source: 'investigations',
+                        action: 'verdict-submitted',
+                        investigationId
+                    }
+                })
             );
 
         } catch (error) {
@@ -994,7 +1236,9 @@
             notebook[type].splice(index, 1);
 
             saveNotebook();
+            analyzeInvestigation();
             renderNotebook();
+            renderEvidenceSummary();
         }
     }
 
@@ -1010,6 +1254,23 @@
         renderTimeline();
         renderEvidenceSummary();
         renderNotebook();
+        renderGraph();
+    }
+
+    function handleDataUpdated(event) {
+        const source = event.detail?.source;
+
+        const relevantSources = [
+            'ingestion',
+            'events',
+            'alerts',
+            'incidents',
+            'detection'
+        ];
+
+        if (!relevantSources.includes(source)) return;
+
+        loadInvestigation();
     }
 
     // =========================================================
@@ -1044,26 +1305,24 @@
         handleLanguageChanged
     );
 
+    document.addEventListener(
+        'nova:data-updated',
+        handleDataUpdated
+    );
+
     // =========================================================
     // PUBLIC API
     // =========================================================
-
-    const previousGlobals = {
-        loadInvestigation: window.loadInvestigation,
-        renderInvestigation: window.renderInvestigation,
-        renderInvestigationTimeline:
-            window.renderInvestigationTimeline,
-        renderInvestigationGraph:
-            window.renderInvestigationGraph,
-        addNotebookEntry: window.addNotebookEntry,
-        destroyCurrentModule: window.destroyCurrentModule
-    };
 
     window.loadInvestigation = loadInvestigation;
     window.renderInvestigation = renderInvestigation;
     window.renderInvestigationTimeline = renderTimeline;
     window.renderInvestigationGraph = renderGraph;
     window.addNotebookEntry = addNotebookEntry;
+
+    window.getInvestigationAnalysis = function () {
+        return investigationAnalysis;
+    };
 
     // =========================================================
     // CLEANUP
@@ -1074,6 +1333,7 @@
 
         isActive = false;
         requestVersion++;
+        reloadRequested = false;
 
         document.removeEventListener('click', handleClick);
 
@@ -1097,10 +1357,17 @@
             handleLanguageChanged
         );
 
+        document.removeEventListener(
+            'nova:data-updated',
+            handleDataUpdated
+        );
+
         if (cy) {
             cy.destroy();
             cy = null;
         }
+
+        getElement('investigation-graph-message')?.remove();
 
         if (window.loadInvestigation === loadInvestigation) {
             window.loadInvestigation =
@@ -1129,10 +1396,28 @@
                 previousGlobals.addNotebookEntry;
         }
 
+        if (
+            window.getInvestigationAnalysis &&
+            typeof window.getInvestigationAnalysis === 'function'
+        ) {
+            window.getInvestigationAnalysis =
+                previousGlobals.getInvestigationAnalysis;
+        }
+
         if (window.destroyCurrentModule === cleanup) {
             window.destroyCurrentModule =
                 previousGlobals.destroyCurrentModule;
         }
+
+        if (window.investigationAnalysis === investigationAnalysis) {
+            delete window.investigationAnalysis;
+        }
+
+        currentInvestigation = null;
+        currentIncident = null;
+        currentEvents = [];
+        currentAlerts = [];
+        investigationAnalysis = null;
     }
 
     window.destroyCurrentModule = cleanup;

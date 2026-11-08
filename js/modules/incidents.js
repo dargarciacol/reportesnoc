@@ -15,10 +15,13 @@
     // ==========================================
 
     let incidents = [];
+    let currentAnalysis = null;
+
     let isLoading = false;
     let isCreating = false;
     let showMyIncidents = false;
     let isActive = true;
+    let reloadRequested = false;
     let requestVersion = 0;
 
     const severityColors = {
@@ -34,6 +37,20 @@
         ERADICATION: 75,
         RECOVERY: 90,
         CLOSED: 100
+    };
+
+    // ==========================================
+    // REFERENCIAS GLOBALES ANTERIORES
+    // ==========================================
+
+    const previousGlobals = {
+        loadIncidents: window.loadIncidents,
+        renderIncidents: window.renderIncidents,
+        analyzeIncidents: window.analyzeIncidents,
+        getIncidentAnalysis: window.getIncidentAnalysis,
+        openInvestigationWorkspace:
+            window.openInvestigationWorkspace,
+        destroyCurrentModule: window.destroyCurrentModule
     };
 
     // ==========================================
@@ -140,7 +157,11 @@
             );
 
         } catch (error) {
-            console.error('Unable to read current user:', error);
+            console.error(
+                'No fue posible leer el usuario autenticado:',
+                error
+            );
+
             return null;
         }
     }
@@ -151,12 +172,15 @@
 
     function normalizeIncident(incident) {
         if (!incident || !incident.id) {
-            throw new Error('Invalid incident received from backend.');
+            throw new Error(
+                'El backend devolvió un incidente no válido.'
+            );
         }
 
         return {
+            ...incident,
             id: String(incident.id),
-            title: incident.title || 'Untitled incident',
+            title: incident.title || 'Incidente sin título',
             description: incident.description || '',
             severity: normalizeValue(incident.severity),
             status: normalizeValue(incident.status),
@@ -166,6 +190,161 @@
             createdAt: incident.createdAt || null,
             updatedAt: incident.updatedAt || null
         };
+    }
+
+    // ==========================================
+    // ANÁLISIS AUTOMÁTICO DE INCIDENTES
+    // ==========================================
+
+    function analyzeIncidents() {
+        const analysis = {
+            totalIncidents: incidents.length,
+
+            bySeverity: {
+                CRITICAL: 0,
+                HIGH: 0,
+                MEDIUM: 0,
+                LOW: 0,
+                UNKNOWN: 0
+            },
+
+            byStatus: {
+                TRIAGE: 0,
+                CONTAINMENT: 0,
+                ERADICATION: 0,
+                RECOVERY: 0,
+                CLOSED: 0,
+                UNKNOWN: 0
+            },
+
+            openIncidents: 0,
+            closedIncidents: 0,
+
+            assignedIncidents: 0,
+            unassignedIncidents: 0,
+
+            criticalOpenIncidents: 0,
+            highPriorityOpenIncidents: 0,
+
+            averageConfidenceLevel: null,
+            incidentsWithConfidence: 0,
+
+            analyzedAt: new Date().toISOString()
+        };
+
+        let confidenceTotal = 0;
+
+        incidents.forEach(incident => {
+            const severity = normalizeValue(incident.severity);
+            const status = normalizeValue(incident.status);
+
+            // Distribución por severidad
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    analysis.bySeverity,
+                    severity
+                )
+            ) {
+                analysis.bySeverity[severity]++;
+            } else {
+                analysis.bySeverity.UNKNOWN++;
+            }
+
+            // Distribución por estado
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    analysis.byStatus,
+                    status
+                )
+            ) {
+                analysis.byStatus[status]++;
+            } else {
+                analysis.byStatus.UNKNOWN++;
+            }
+
+            // Incidentes abiertos y cerrados
+            if (status === 'CLOSED') {
+                analysis.closedIncidents++;
+            } else {
+                analysis.openIncidents++;
+            }
+
+            // Asignación
+            if (incident.assignedTo) {
+                analysis.assignedIncidents++;
+            } else {
+                analysis.unassignedIncidents++;
+            }
+
+            // Prioridad de incidentes abiertos
+            if (status !== 'CLOSED') {
+                if (severity === 'CRITICAL') {
+                    analysis.criticalOpenIncidents++;
+                }
+
+                if (
+                    severity === 'CRITICAL' ||
+                    severity === 'HIGH'
+                ) {
+                    analysis.highPriorityOpenIncidents++;
+                }
+            }
+
+            // Nivel de confianza, si el backend lo proporciona
+            const confidence = Number(incident.confidenceLevel);
+
+            if (
+                incident.confidenceLevel !== null &&
+                incident.confidenceLevel !== undefined &&
+                incident.confidenceLevel !== '' &&
+                Number.isFinite(confidence)
+            ) {
+                confidenceTotal += confidence;
+                analysis.incidentsWithConfidence++;
+            }
+        });
+
+        if (analysis.incidentsWithConfidence > 0) {
+            analysis.averageConfidenceLevel = Number(
+                (
+                    confidenceTotal /
+                    analysis.incidentsWithConfidence
+                ).toFixed(2)
+            );
+        }
+
+        currentAnalysis = analysis;
+
+        window.incidentAnalysis = analysis;
+
+        document.dispatchEvent(
+            new CustomEvent('nova:incidents-analyzed', {
+                detail: analysis
+            })
+        );
+
+        return analysis;
+    }
+
+    function getIncidentAnalysis() {
+        return currentAnalysis;
+    }
+
+    // ==========================================
+    // NOTIFICAR ACTUALIZACIONES
+    // ==========================================
+
+    function dispatchDataUpdated(action, additionalData = {}) {
+        document.dispatchEvent(
+            new CustomEvent('nova:data-updated', {
+                detail: {
+                    source: 'incidents',
+                    action,
+                    timestamp: new Date().toISOString(),
+                    ...additionalData
+                }
+            })
+        );
     }
 
     // ==========================================
@@ -234,7 +413,7 @@
             <div class="col-12 text-center text-muted py-5">
                 <div class="spinner-border spinner-border-sm me-2"
                      role="status"></div>
-                ${t('loadingIncidents', 'Loading incidents...')}
+                ${t('loadingIncidents', 'Cargando incidentes...')}
             </div>
         `;
     }
@@ -253,7 +432,7 @@
                     <button class="btn btn-sm btn-outline-danger ms-3"
                             type="button"
                             id="retry-incidents">
-                        ${t('retry', 'Retry')}
+                        ${t('retry', 'Reintentar')}
                     </button>
                 </div>
             </div>
@@ -269,12 +448,12 @@
             <div class="col-12 text-center text-muted py-5">
                 <i class="bi bi-shield-check fs-1 d-block mb-3"></i>
 
-                <h6>${t('noIncidentsFound', 'No incidents found.')}</h6>
+                <h6>${t('noIncidentsFound', 'No se encontraron incidentes.')}</h6>
 
                 <p class="small mb-0">
                     ${t(
                         'incidentsWillAppear',
-                        'Incidents will appear here when they are created by the security workflow.'
+                        'Los incidentes aparecerán aquí cuando sean creados por el flujo de seguridad.'
                     )}
                 </p>
             </div>
@@ -322,7 +501,7 @@
                 : `
                     <span class="text-warning">
                         <i class="bi bi-exclamation-circle me-1"></i>
-                        ${t('unassigned', 'Unassigned')}
+                        ${t('unassigned', 'Sin asignar')}
                     </span>
                 `;
 
@@ -410,7 +589,7 @@
                                         text-muted small mb-1">
 
                                 <span>
-                                    ${t('lifecycleProgress', 'Lifecycle Progress')}
+                                    ${t('lifecycleProgress', 'Progreso del ciclo de vida')}
                                 </span>
 
                                 <span>${progress}%</span>
@@ -446,7 +625,7 @@
                                 type="button"
                                 data-investigation-id="${escapeHtml(incident.id)}">
 
-                                ${t('workspace', 'Workspace')}
+                                ${t('workspace', 'Espacio de investigación')}
                                 <i class="bi bi-arrow-right ms-1"></i>
 
                             </button>
@@ -468,16 +647,25 @@
     // ==========================================
 
     async function loadIncidents() {
-        if (!isActive || isLoading) return;
+        if (!isActive) return;
 
-        if (!window.HttpClient || !window.ENDPOINTS) {
+        if (isLoading) {
+            reloadRequested = true;
+            return;
+        }
+
+        if (
+            !window.HttpClient ||
+            !window.ENDPOINTS?.INCIDENTS?.LIST
+        ) {
             console.error(
-                'Incidents: HttpClient or ENDPOINTS not available.'
+                'Incidents: HttpClient o ENDPOINTS no disponibles.'
             );
             return;
         }
 
         isLoading = true;
+        reloadRequested = false;
 
         const currentRequest = ++requestVersion;
 
@@ -496,35 +684,45 @@
 
             if (!data || !Array.isArray(data.content)) {
                 throw new Error(
-                    'Invalid incidents response: expected paginated data.'
+                    'Respuesta no válida: se esperaba una lista paginada de incidentes.'
                 );
             }
 
             incidents = data.content.map(normalizeIncident);
+
+            // Analiza automáticamente los incidentes recibidos.
+            analyzeIncidents();
+
+            renderIncidents();
 
         } catch (error) {
             if (!isActive || currentRequest !== requestVersion) {
                 return;
             }
 
-            console.error('Error loading incidents:', error);
-
-            incidents = [];
-
-            renderError(
-                error.message || 'Unable to load incidents.'
+            console.error(
+                'Error al cargar incidentes:',
+                error
             );
 
-            return;
+            incidents = [];
+            currentAnalysis = null;
+            window.incidentAnalysis = null;
+
+            renderError(
+                error.message ||
+                'No fue posible cargar los incidentes.'
+            );
 
         } finally {
             if (currentRequest === requestVersion) {
                 isLoading = false;
             }
-        }
 
-        if (isActive && currentRequest === requestVersion) {
-            renderIncidents();
+            if (isActive && reloadRequested) {
+                reloadRequested = false;
+                loadIncidents();
+            }
         }
     }
 
@@ -559,7 +757,7 @@
             window.alert(
                 t(
                     'completeRequiredFields',
-                    'Please complete all required fields.'
+                    'Completa todos los campos obligatorios.'
                 )
             );
             return;
@@ -598,7 +796,7 @@
 
             if (!response?.data?.id) {
                 throw new Error(
-                    'The backend did not return the created incident.'
+                    'El backend no devolvió el incidente creado.'
                 );
             }
 
@@ -625,15 +823,23 @@
                     ?.hide();
             }
 
+            dispatchDataUpdated('incident-created', {
+                incidentId: String(response.data.id)
+            });
+
             await loadIncidents();
 
         } catch (error) {
             if (!isActive) return;
 
-            console.error('Error creating incident:', error);
+            console.error(
+                'Error al crear el incidente:',
+                error
+            );
 
             window.alert(
-                error.message || 'Unable to create incident.'
+                error.message ||
+                'No fue posible crear el incidente.'
             );
 
         } finally {
@@ -675,8 +881,35 @@
         }
 
         console.error(
-            'Investigations route is not available.'
+            'La ruta de investigaciones no está disponible.'
         );
+    }
+
+    // ==========================================
+    // ACTUALIZACIONES DE OTROS MÓDULOS
+    // ==========================================
+
+    function handleDataUpdated(event) {
+        if (!isActive) return;
+
+        const source = event.detail?.source;
+
+        // Los cambios en eventos, alertas, reglas o ingestión
+        // pueden requerir volver a consultar los incidentes.
+        //
+        // No escuchamos "incidents" para evitar un ciclo
+        // cuando este módulo crea o actualiza sus propios datos.
+
+        const relevantSources = [
+            'ingestion',
+            'events',
+            'alerts',
+            'detection'
+        ];
+
+        if (relevantSources.includes(source)) {
+            loadIncidents();
+        }
     }
 
     // ==========================================
@@ -713,7 +946,7 @@
                 window.alert(
                     t(
                         'userSessionUnavailable',
-                        'Unable to identify the current user session.'
+                        'No fue posible identificar la sesión del usuario.'
                     )
                 );
                 return;
@@ -751,19 +984,12 @@
     // LIMPIEZA DEL MÓDULO
     // ==========================================
 
-    const previousGlobals = {
-        loadIncidents: window.loadIncidents,
-        renderIncidents: window.renderIncidents,
-        openInvestigationWorkspace:
-            window.openInvestigationWorkspace,
-        destroyCurrentModule: window.destroyCurrentModule
-    };
-
     function cleanup() {
         if (!isActive) return;
 
         isActive = false;
         requestVersion++;
+        reloadRequested = false;
 
         document.removeEventListener('submit', handleSubmit);
         document.removeEventListener('click', handleClick);
@@ -775,12 +1001,26 @@
             handleLanguageChanged
         );
 
+        document.removeEventListener(
+            'nova:data-updated',
+            handleDataUpdated
+        );
+
         if (window.loadIncidents === loadIncidents) {
             window.loadIncidents = previousGlobals.loadIncidents;
         }
 
         if (window.renderIncidents === renderIncidents) {
             window.renderIncidents = previousGlobals.renderIncidents;
+        }
+
+        if (window.analyzeIncidents === analyzeIncidents) {
+            window.analyzeIncidents = previousGlobals.analyzeIncidents;
+        }
+
+        if (window.getIncidentAnalysis === getIncidentAnalysis) {
+            window.getIncidentAnalysis =
+                previousGlobals.getIncidentAnalysis;
         }
 
         if (
@@ -795,6 +1035,14 @@
             window.destroyCurrentModule =
                 previousGlobals.destroyCurrentModule;
         }
+
+        incidents = [];
+        currentAnalysis = null;
+
+        window.incidentAnalysis = null;
+
+        isLoading = false;
+        isCreating = false;
     }
 
     // ==========================================
@@ -811,12 +1059,20 @@
         handleLanguageChanged
     );
 
+    document.addEventListener(
+        'nova:data-updated',
+        handleDataUpdated
+    );
+
     // ==========================================
     // MÉTODOS PÚBLICOS
     // ==========================================
 
     window.loadIncidents = loadIncidents;
     window.renderIncidents = renderIncidents;
+    window.analyzeIncidents = analyzeIncidents;
+    window.getIncidentAnalysis = getIncidentAnalysis;
+
     window.openInvestigationWorkspace =
         openInvestigationWorkspace;
 

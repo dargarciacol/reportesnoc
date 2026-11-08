@@ -1,89 +1,335 @@
-<div class="container-fluid p-0">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0 text-main">Alert Management</h2>
-        <div class="d-flex gap-2">
-            <button class="btn btn-outline-info btn-sm fw-bold" id="btn-refresh-alerts">
-                <i class="bi bi-arrow-clockwise me-1"></i> Refresh Queue
-            </button>
-            <button class="btn btn-primary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#bulkActionModal">
-                <i class="bi bi-check2-square me-1"></i> Bulk Actions
-            </button>
+
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta name="description"
+          content="NOVA SIEM - Gestión y supervisión de alertas de seguridad">
+
+    <meta name="theme-color" content="#0B1120">
+
+    <title>NOVA SIEM | Gestión de alertas</title>
+
+    <!-- BOOTSTRAP CSS -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <!-- ICONOS BOOTSTRAP -->
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    >
+
+    <!-- ESTILOS NOVA SIEM -->
+    <link rel="stylesheet" href="../assets/css/main.css">
+    <link rel="stylesheet" href="../assets/css/components.css">
+    <link rel="stylesheet" href="../assets/css/sidebar.css">
+
+</head>
+
+<body>
+
+    <div class="container-fluid p-0">
+
+        <!-- ENCABEZADO DE GESTIÓN DE ALERTAS -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+
+            <h2 class="h4 mb-0 text-main">
+                Gestión de alertas
+            </h2>
+
+            <div class="d-flex gap-2">
+
+                <button
+                    class="btn btn-outline-info btn-sm fw-bold"
+                    id="btn-refresh-alerts"
+                    type="button"
+                >
+
+                    <i class="bi bi-arrow-clockwise me-1"></i>
+                    Actualizar cola
+
+                </button>
+
+                <button
+                    class="btn btn-primary btn-sm fw-bold"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#bulkActionModal"
+                >
+
+                    <i class="bi bi-check2-square me-1"></i>
+                    Acciones masivas
+
+                </button>
+
+            </div>
+
         </div>
+
+
+        <!-- MÉTRICAS DE ALERTAS -->
+        <div class="row g-3 mb-4">
+
+            <!-- ALERTAS NUEVAS -->
+            <div class="col-md-3">
+
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        Alertas nuevas
+                    </div>
+
+                    <div
+                        class="fs-3 fw-bold text-main mt-1"
+                        id="stat-new-alerts"
+                    >
+                        0
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ALERTAS EN PROCESO -->
+            <div class="col-md-3">
+
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        En proceso
+                    </div>
+
+                    <div
+                        class="fs-3 fw-bold text-primary-nova mt-1"
+                        id="stat-progress-alerts"
+                    >
+                        0
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ALERTAS ESCALADAS -->
+            <div class="col-md-3">
+
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        Escaladas a incidentes
+                    </div>
+
+                    <div
+                        class="fs-3 fw-bold mt-1"
+                        style="color: #EF4444;"
+                        id="stat-escalated-alerts"
+                    >
+                        0
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- FALSOS POSITIVOS -->
+            <div class="col-md-3">
+
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        Falsos positivos
+                    </div>
+
+                    <div
+                        class="fs-3 fw-bold mt-1"
+                        style="color: #94A3B8;"
+                        id="stat-fp-alerts"
+                    >
+                        0
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- FILTROS Y BÚSQUEDA -->
+        <div class="card bg-surface border-panel mb-4 rounded-3">
+
+            <div class="card-body">
+
+                <div class="row g-3">
+
+                    <!-- BÚSQUEDA -->
+                    <div class="col-md-4">
+
+                        <input
+                            type="text"
+                            class="form-control bg-main border-panel text-main"
+                            placeholder="Buscar por ID, regla o entidad..."
+                            id="search-alerts"
+                            aria-label="Buscar alertas"
+                        >
+
+                    </div>
+
+
+                    <!-- FILTRO POR ESTADO -->
+                    <div class="col-md-3">
+
+                        <select
+                            class="form-select bg-main border-panel text-main"
+                            id="filter-status-alerts"
+                            aria-label="Filtrar alertas por estado"
+                        >
+
+                            <option value="">
+                                Todos los estados
+                            </option>
+
+                            <option value="New" selected>
+                                Nueva
+                            </option>
+
+                            <option value="In Progress">
+                                En proceso
+                            </option>
+
+                            <option value="Under Investigation">
+                                En investigación
+                            </option>
+
+                            <option value="Resolved">
+                                Resuelta
+                            </option>
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- FILTRO POR RESPONSABLE -->
+                    <div class="col-md-3">
+
+                        <select
+                            class="form-select bg-main border-panel text-main"
+                            id="filter-assignee"
+                            aria-label="Filtrar alertas por responsable"
+                        >
+
+                            <option value="">
+                                Todos los responsables
+                            </option>
+
+                            <option value="Unassigned">
+                                Sin asignar
+                            </option>
+
+                            <option value="Me">
+                                Asignadas a mí
+                            </option>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- TABLA DE ALERTAS -->
+        <div class="card bg-surface border-panel h-100 rounded-3">
+
+            <div class="table-responsive">
+
+                <table
+                    class="table table-dark table-hover mb-0 align-middle"
+                    style="--bs-table-bg: var(--bg-surface);"
+                >
+
+                    <thead>
+
+                        <tr>
+
+                            <!-- SELECCIONAR TODAS -->
+                            <th style="width: 40px;">
+
+                                <input
+                                    class="form-check-input bg-main border-panel"
+                                    type="checkbox"
+                                    id="selectAllAlerts"
+                                    aria-label="Seleccionar todas las alertas"
+                                >
+
+                            </th>
+
+                            <th>
+                                ID de alerta
+                            </th>
+
+                            <th>
+                                Fecha de generación
+                            </th>
+
+                            <th>
+                                Regla activada
+                            </th>
+
+                            <th>
+                                Severidad
+                            </th>
+
+                            <th>
+                                Estado
+                            </th>
+
+                            <th>
+                                Responsable
+                            </th>
+
+                            <th class="text-center">
+                                Acciones
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+
+                    <tbody id="table-alerts-body">
+
+                        <!-- Las alertas se generan dinámicamente mediante alerts.js -->
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
     </div>
 
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-                <div class="text-muted small text-uppercase fw-semibold">New Alerts</div>
-                <div class="fs-3 fw-bold text-main mt-1" id="stat-new-alerts">0</div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-                <div class="text-muted small text-uppercase fw-semibold">In Progress</div>
-                <div class="fs-3 fw-bold text-primary-nova mt-1" id="stat-progress-alerts">0</div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-                <div class="text-muted small text-uppercase fw-semibold">Escalated (Incidents)</div>
-                <div class="fs-3 fw-bold mt-1" style="color: #EF4444;" id="stat-escalated-alerts">0</div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-                <div class="text-muted small text-uppercase fw-semibold">False Positives</div>
-                <div class="fs-3 fw-bold mt-1" style="color: #94A3B8;" id="stat-fp-alerts">0</div>
-            </div>
-        </div>
-    </div>
 
-    <div class="card bg-surface border-panel mb-4 rounded-3">
-        <div class="card-body">
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <input type="text" class="form-control bg-main border-panel text-main" placeholder="Search by ID, rule or entity..." id="search-alerts">
-                </div>
-                <div class="col-md-3">
-                    <select class="form-select bg-main border-panel text-main" id="filter-status-alerts">
-                        <option value="">All Statuses</option>
-                        <option value="New" selected>New</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Under Investigation">Under Investigation</option>
-                        <option value="Resolved">Resolved</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <select class="form-select bg-main border-panel text-main" id="filter-assignee">
-                        <option value="">All Assignees</option>
-                        <option value="Unassigned">Unassigned</option>
-                        <option value="Me">Assigned to Me</option>
-                    </select>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!--
+        Las bibliotecas compartidas, el enrutador y el módulo
+        alerts.js se administran desde app.html.
+    -->
 
-    <div class="card bg-surface border-panel h-100 rounded-3">
-        <div class="table-responsive">
-            <table class="table table-dark table-hover mb-0 align-middle" style="--bs-table-bg: var(--bg-surface);">
-                <thead>
-                    <tr>
-                        <th style="width: 40px;">
-                            <input class="form-check-input bg-main border-panel" type="checkbox" id="selectAllAlerts">
-                        </th>
-                        <th>Alert ID</th>
-                        <th>Generated</th>
-                        <th>Rule Triggered</th>
-                        <th>Severity</th>
-                        <th>Status</th>
-                        <th>Assignee</th>
-                        <th class="text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="table-alerts-body">
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
+</body>
+
+</html>

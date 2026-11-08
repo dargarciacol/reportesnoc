@@ -2,15 +2,48 @@
 (function () {
     'use strict';
 
+    // =========================================================
+    // TRANSLATION HELPER
+    // =========================================================
+
+    function getTranslation(key, fallback) {
+        return typeof window.t === 'function'
+            ? window.t(key, fallback) || fallback
+            : fallback;
+    }
+
+    // =========================================================
+    // CLEANUP HELPERS
+    // =========================================================
+
+    function removeEmptyContainer(container) {
+        if (
+            container &&
+            container.isConnected &&
+            !container.children.length
+        ) {
+            container.remove();
+        }
+    }
+
+    // =========================================================
+    // DOM UTILITIES
+    // =========================================================
+
     const DOMUtils = {
 
-        // =========================================================
+        // =====================================================
         // CREATE ELEMENT
-        // =========================================================
+        // =====================================================
 
         createElement(tag, className = '', innerHTML = '') {
-            if (typeof tag !== 'string' || !tag.trim()) {
-                throw new TypeError('A valid HTML tag is required.');
+            if (
+                typeof tag !== 'string' ||
+                !tag.trim()
+            ) {
+                throw new TypeError(
+                    'A valid HTML tag is required.'
+                );
             }
 
             const element = document.createElement(tag);
@@ -19,18 +52,27 @@
                 element.className = className;
             }
 
+            // Mantiene compatibilidad con el contrato original.
+            // Para texto dinámico, utilizar textContent directamente.
             if (innerHTML !== '') {
-                element.innerHTML = innerHTML;
+                element.innerHTML = String(innerHTML);
             }
 
             return element;
         },
 
-        // =========================================================
+        // =====================================================
         // TOAST NOTIFICATIONS
-        // =========================================================
+        // =====================================================
 
         showToast(message, type = 'info') {
+            if (!document.body) {
+                console.error(
+                    'DOMUtils: document.body is not available.'
+                );
+                return;
+            }
+
             let toastContainer = document.getElementById(
                 'nova-toast-container'
             );
@@ -83,13 +125,16 @@
             toastEl.setAttribute('aria-live', 'assertive');
             toastEl.setAttribute('aria-atomic', 'true');
 
+            // Contenedor principal.
             const wrapper = document.createElement('div');
             wrapper.className = 'd-flex';
 
+            // Contenido del mensaje.
             const body = document.createElement('div');
             body.className = 'toast-body fw-semibold';
             body.textContent = String(message ?? '');
 
+            // Botón para cerrar.
             const closeButton = document.createElement('button');
 
             closeButton.type = 'button';
@@ -107,15 +152,21 @@
             toastEl.appendChild(wrapper);
             toastContainer.appendChild(toastEl);
 
-            // Bootstrap integration.
+            // =================================================
+            // BOOTSTRAP INTEGRATION
+            // =================================================
+
             if (
                 window.bootstrap &&
                 typeof window.bootstrap.Toast === 'function'
             ) {
-                const bsToast = new window.bootstrap.Toast(toastEl, {
-                    autohide: true,
-                    delay: 3500
-                });
+                const bsToast = new window.bootstrap.Toast(
+                    toastEl,
+                    {
+                        autohide: true,
+                        delay: 3500
+                    }
+                );
 
                 closeButton.addEventListener('click', () => {
                     bsToast.hide();
@@ -127,60 +178,37 @@
                         bsToast.dispose();
                         toastEl.remove();
 
-                        if (
-                            toastContainer.isConnected &&
-                            !toastContainer.children.length
-                        ) {
-                            toastContainer.remove();
-                        }
+                        removeEmptyContainer(toastContainer);
                     },
                     { once: true }
                 );
 
                 bsToast.show();
 
-            } else {
-                // Fallback without Bootstrap JS.
-                toastEl.classList.add('show');
-
-                closeButton.addEventListener('click', () => {
-                    toastEl.remove();
-                    removeEmptyContainer(toastContainer);
-                });
-
-                window.setTimeout(() => {
-                    if (toastEl.isConnected) {
-                        toastEl.remove();
-                        removeEmptyContainer(toastContainer);
-                    }
-                }, 3500);
+                return;
             }
+
+            // =================================================
+            // FALLBACK WITHOUT BOOTSTRAP
+            // =================================================
+
+            toastEl.classList.add('show');
+
+            closeButton.addEventListener('click', () => {
+                toastEl.remove();
+                removeEmptyContainer(toastContainer);
+            });
+
+            // El temporizador verifica que el elemento
+            // siga conectado antes de eliminarlo.
+            window.setTimeout(() => {
+                if (!toastEl.isConnected) return;
+
+                toastEl.remove();
+                removeEmptyContainer(toastContainer);
+            }, 3500);
         }
     };
-
-    // =========================================================
-    // TRANSLATION HELPER
-    // =========================================================
-
-    function getTranslation(key, fallback) {
-        return typeof window.t === 'function'
-            ? window.t(key, fallback) || fallback
-            : fallback;
-    }
-
-    // =========================================================
-    // CLEANUP
-    // =========================================================
-
-    function removeEmptyContainer(container) {
-        if (
-            container &&
-            container.isConnected &&
-            !container.children.length
-        ) {
-            container.remove();
-        }
-    }
 
     // =========================================================
     // GLOBAL EXPORT

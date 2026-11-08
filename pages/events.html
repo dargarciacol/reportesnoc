@@ -1,77 +1,306 @@
-<div class="container-fluid p-0">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0" style="color: var(--text-main);">Event Management</h2>
-        <button class="btn btn-primary btn-sm fw-bold" id="btn-upload-modal" data-bs-toggle="modal" data-bs-target="#uploadModal">
-            <i class="bi bi-file-earmark-excel me-1"></i> Ingest Telemetry
-        </button>
-    </div>
 
-    <div class="card bg-surface border-panel mb-4 rounded-3">
-        <div class="card-body">
-            <div class="row g-3">
-                <div class="col-md-3">
-                    <input type="text" class="form-control bg-main border-panel text-main" placeholder="Search events..." id="filter-search">
-                </div>
-                <div class="col-md-2">
-                    <select class="form-select bg-main border-panel text-main" id="filter-severity">
-                        <option value="">All Severities</option>
-                        <option value="Critical">Critical</option>
-                        <option value="High">High</option>
-                        <option value="Medium">Medium</option>
-                        <option value="Low">Low</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <input type="datetime-local" class="form-control bg-main border-panel text-main" id="filter-date">
-                </div>
-                <div class="col-md-4 text-end">
-                    <button class="btn btn-outline-info btn-sm me-2" id="btn-refresh"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
-                    <button class="btn btn-outline-secondary btn-sm" id="btn-export"><i class="bi bi-download"></i> Export</button>
-                </div>
-            </div>
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta name="description"
+          content="NOVA SIEM - Gestión, consulta e ingestión de eventos de seguridad">
+
+    <meta name="theme-color" content="#0B1120">
+
+    <title>NOVA SIEM | Gestión de eventos</title>
+
+    <!-- BOOTSTRAP CSS -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <!-- ICONOS BOOTSTRAP -->
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    >
+
+    <!-- ESTILOS NOVA SIEM -->
+    <link rel="stylesheet" href="../assets/css/main.css">
+    <link rel="stylesheet" href="../assets/css/components.css">
+    <link rel="stylesheet" href="../assets/css/sidebar.css">
+
+</head>
+
+<body>
+
+    <div class="container-fluid p-0">
+
+        <!-- ENCABEZADO -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+
+            <h2 class="h4 mb-0" style="color: var(--text-main);">
+                Gestión de eventos
+            </h2>
+
+            <button
+                class="btn btn-primary btn-sm fw-bold"
+                id="btn-upload-modal"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#uploadModal"
+            >
+
+                <i class="bi bi-file-earmark-excel me-1"></i>
+                Ingresar telemetría
+
+            </button>
+
         </div>
-    </div>
 
-    <div class="card bg-surface border-panel h-100 rounded-3">
-        <div class="table-responsive">
-            <table class="table table-dark table-hover mb-0 align-middle" style="--bs-table-bg: var(--bg-surface);">
-                <thead>
-                    <tr>
-                        <th>Timestamp</th>
-                        <th>Source IP</th>
-                        <th>User / Identity</th>
-                        <th>Event Type</th>
-                        <th>Action / Outcome</th>
-                        <th>Severity</th>
-                        <th class="text-center">Details</th>
-                    </tr>
-                </thead>
-                <tbody id="table-events-body">
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
 
-<div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content bg-surface border-panel text-main">
-            <div class="modal-header border-panel">
-                <h5 class="modal-title fw-bold" style="color: var(--primary);">Ingest Telemetry (Excel/CSV)</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="uploadForm">
-                    <div class="mb-3">
-                        <label for="fileInput" class="form-label" style="color: var(--text-muted);">Select file containing raw events</label>
-                        <input class="form-control bg-main border-panel text-main" type="file" id="fileInput" accept=".csv, .xlsx, .xls" required>
+        <!-- FILTROS Y HERRAMIENTAS -->
+        <div class="card bg-surface border-panel mb-4 rounded-3">
+
+            <div class="card-body">
+
+                <div class="row g-3">
+
+                    <!-- BÚSQUEDA -->
+                    <div class="col-md-3">
+
+                        <input
+                            type="text"
+                            class="form-control bg-main border-panel text-main"
+                            placeholder="Buscar eventos..."
+                            id="filter-search"
+                            aria-label="Buscar eventos"
+                        >
+
                     </div>
-                    <div id="uploadStatus" class="alert d-none mt-3" role="alert"></div>
-                    <div class="d-grid gap-2 mt-4">
-                        <button type="submit" class="btn btn-primary fw-bold" id="btn-submit-upload">Process & Normalise</button>
+
+
+                    <!-- FILTRO DE SEVERIDAD -->
+                    <div class="col-md-2">
+
+                        <select
+                            class="form-select bg-main border-panel text-main"
+                            id="filter-severity"
+                            aria-label="Filtrar por severidad"
+                        >
+
+                            <option value="">Todas las severidades</option>
+                            <option value="Critical">Crítica</option>
+                            <option value="High">Alta</option>
+                            <option value="Medium">Media</option>
+                            <option value="Low">Baja</option>
+
+                        </select>
+
                     </div>
-                </form>
+
+
+                    <!-- FILTRO POR FECHA -->
+                    <div class="col-md-3">
+
+                        <input
+                            type="datetime-local"
+                            class="form-control bg-main border-panel text-main"
+                            id="filter-date"
+                            aria-label="Filtrar eventos por fecha y hora"
+                        >
+
+                    </div>
+
+
+                    <!-- ACCIONES -->
+                    <div class="col-md-4 text-end">
+
+                        <button
+                            class="btn btn-outline-info btn-sm me-2"
+                            id="btn-refresh"
+                            type="button"
+                        >
+
+                            <i class="bi bi-arrow-clockwise"></i>
+                            Actualizar
+
+                        </button>
+
+                        <button
+                            class="btn btn-outline-secondary btn-sm"
+                            id="btn-export"
+                            type="button"
+                        >
+
+                            <i class="bi bi-download"></i>
+                            Exportar
+
+                        </button>
+
+                    </div>
+
+                </div>
+
             </div>
+
         </div>
+
+
+        <!-- TABLA DE EVENTOS -->
+        <div class="card bg-surface border-panel h-100 rounded-3">
+
+            <div class="table-responsive">
+
+                <table
+                    class="table table-dark table-hover mb-0 align-middle"
+                    style="--bs-table-bg: var(--bg-surface);"
+                >
+
+                    <thead>
+
+                        <tr>
+
+                            <th>Fecha y hora</th>
+                            <th>Dirección IP de origen</th>
+                            <th>Usuario / Identidad</th>
+                            <th>Tipo de evento</th>
+                            <th>Acción / Resultado</th>
+                            <th>Severidad</th>
+                            <th class="text-center">Detalles</th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="table-events-body">
+
+                        <!-- Los eventos se generan dinámicamente mediante events.js -->
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
     </div>
-</div>
+
+
+    <!-- MODAL PARA INGRESAR TELEMETRÍA -->
+    <div
+        class="modal fade"
+        id="uploadModal"
+        tabindex="-1"
+        aria-labelledby="uploadModalLabel"
+        aria-hidden="true"
+    >
+
+        <div class="modal-dialog modal-dialog-centered">
+
+            <div class="modal-content bg-surface border-panel text-main">
+
+                <!-- ENCABEZADO DEL MODAL -->
+                <div class="modal-header border-panel">
+
+                    <h5
+                        class="modal-title fw-bold"
+                        id="uploadModalLabel"
+                        style="color: var(--primary);"
+                    >
+
+                        Ingresar telemetría (Excel/CSV)
+
+                    </h5>
+
+                    <button
+                        type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"
+                        aria-label="Cerrar"
+                    >
+                    </button>
+
+                </div>
+
+
+                <!-- CUERPO DEL MODAL -->
+                <div class="modal-body">
+
+                    <form id="uploadForm">
+
+                        <!-- SELECCIÓN DE ARCHIVO -->
+                        <div class="mb-3">
+
+                            <label
+                                for="fileInput"
+                                class="form-label"
+                                style="color: var(--text-muted);"
+                            >
+
+                                Seleccione el archivo que contiene los eventos sin procesar
+
+                            </label>
+
+                            <input
+                                class="form-control bg-main border-panel text-main"
+                                type="file"
+                                id="fileInput"
+                                accept=".csv, .xlsx, .xls"
+                                required
+                            >
+
+                            <div class="form-text text-muted">
+
+                                Formatos permitidos: CSV, XLSX y XLS.
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- ESTADO DE CARGA -->
+                        <div
+                            id="uploadStatus"
+                            class="alert d-none mt-3"
+                            role="alert"
+                        >
+                        </div>
+
+
+                        <!-- PROCESAR ARCHIVO -->
+                        <div class="d-grid gap-2 mt-4">
+
+                            <button
+                                type="submit"
+                                class="btn btn-primary fw-bold"
+                                id="btn-submit-upload"
+                            >
+
+                                <i class="bi bi-cloud-arrow-up me-1"></i>
+                                Procesar y normalizar
+
+                            </button>
+
+                        </div>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!--
+        Las bibliotecas compartidas, el enrutador y los módulos
+        de JavaScript se administran desde app.html.
+    -->
+
+</body>
+
+</html>

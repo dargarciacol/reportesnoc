@@ -1,325 +1,266 @@
 
-<div class="container-fluid p-0">
+<!DOCTYPE html>
+<html lang="es">
 
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-        <h2 class="h4 mb-0 text-main" data-i18n="reportingTitle">
-            Reporting & Compliance
-        </h2>
+    <meta name="description"
+          content="NOVA SIEM - Gestión de informes, reportes y cumplimiento de seguridad">
 
-        <button class="btn btn-primary btn-sm fw-bold"
+    <meta name="theme-color" content="#0B1120">
+    <!-- BOOTSTRAP CSS -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <!-- BOOTSTRAP ICONS -->
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    >
+
+    <!-- ESTILOS NOVA SIEM -->
+    <link rel="stylesheet" href="assets/css/main.css">
+    <link rel="stylesheet" href="assets/css/components.css">
+    <link rel="stylesheet" href="assets/css/sidebar.css">
+
+    <title>NOVA SIEM | Informes y reportes</title>
+
+    <!-- ESTILOS BOOTSTRAP -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <!-- ICONOS BOOTSTRAP -->
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    >
+
+    <!-- ESTILOS NOVA SIEM -->
+    <link rel="stylesheet" href="assets/css/main.css">
+    <link rel="stylesheet" href="assets/css/components.css">
+
+</head>
+
+<body>
+
+    <div class="container-fluid p-0">
+
+        <!-- ENCABEZADO -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+
+            <h2 class="h4 mb-0 text-main">
+                Informes y cumplimiento
+            </h2>
+
+            <button
+                class="btn btn-primary btn-sm fw-bold"
+                type="button"
                 data-bs-toggle="modal"
-                data-bs-target="#generateReportModal">
+                data-bs-target="#generateReportModal"
+            >
 
-            <i class="bi bi-file-earmark-plus me-1"></i>
+                <i class="bi bi-file-earmark-plus me-1"></i>
 
-            <span data-i18n="generateNewReport">
-                Generate New Report
-            </span>
-        </button>
+                Generar nuevo informe
 
-    </div>
-
-    <!-- Statistics -->
-    <div class="row g-3 mb-4">
-
-        <div class="col-md-4">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-
-                <div class="text-muted small text-uppercase fw-semibold"
-                     data-i18n="totalReports">
-                    Total Reports Generated
-                </div>
-
-                <div class="fs-3 fw-bold text-main mt-1"
-                     id="stat-total-reports">
-                    0
-                </div>
-
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-
-                <div class="text-muted small text-uppercase fw-semibold"
-                     data-i18n="incidentSummaries">
-                    Incident Summaries
-                </div>
-
-                <div class="fs-3 fw-bold text-primary-nova mt-1"
-                     id="stat-incident-reports">
-                    0
-                </div>
-
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-
-                <div class="text-muted small text-uppercase fw-semibold"
-                     data-i18n="executiveCompliance">
-                    Executive & Compliance
-                </div>
-
-                <div class="fs-3 fw-bold text-success mt-1"
-                     id="stat-compliance-reports">
-                    0
-                </div>
-
-            </div>
-        </div>
-
-    </div>
-
-    <!-- Filters -->
-    <div class="card bg-surface border-panel mb-4 rounded-3">
-
-        <div class="card-body">
-
-            <div class="row g-3">
-
-                <div class="col-md-4">
-
-                    <input
-                        type="text"
-                        class="form-control bg-main border-panel text-main"
-                        placeholder="Search reports by title or ID..."
-                        data-i18n-placeholder="searchReports"
-                        id="search-reports">
-
-                </div>
-
-                <div class="col-md-3">
-
-                    <select class="form-select bg-main border-panel text-main"
-                            id="filter-report-type">
-
-                        <option value="" data-i18n="allTypes">
-                            All Types
-                        </option>
-
-                        <option value="Incident Summary"
-                                data-i18n="incidentSummary">
-                            Incident Summary
-                        </option>
-
-                        <option value="Executive Brief"
-                                data-i18n="executiveBrief">
-                            Executive Brief
-                        </option>
-
-                    </select>
-
-                </div>
-
-                <div class="col-md-3">
-
-                    <input
-                        type="date"
-                        class="form-control bg-main border-panel text-main"
-                        id="filter-report-date">
-
-                </div>
-
-            </div>
+            </button>
 
         </div>
-    </div>
 
-    <!-- Reports Table -->
-    <div class="card bg-surface border-panel h-100 rounded-3">
+        <!-- ESTADÍSTICAS -->
+        <div class="row g-3 mb-4">
 
-        <div class="table-responsive">
+            <!-- TOTAL DE INFORMES -->
+            <div class="col-md-4">
 
-            <table class="table table-dark table-hover mb-0 align-middle"
-                   style="--bs-table-bg: var(--bg-surface);">
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
 
-                <thead>
-                    <tr>
-
-                        <th data-i18n="reportId">
-                            Report ID
-                        </th>
-
-                        <th data-i18n="title">
-                            Title
-                        </th>
-
-                        <th data-i18n="type">
-                            Type
-                        </th>
-
-                        <th data-i18n="generatedOn">
-                            Generated On
-                        </th>
-
-                        <th data-i18n="author">
-                            Author
-                        </th>
-
-                        <th class="text-center" data-i18n="download">
-                            Download
-                        </th>
-
-                    </tr>
-                </thead>
-
-                <tbody id="table-reports-body">
-
-                    <tr>
-                        <td colspan="6"
-                            class="text-center text-muted py-4">
-                            No reports generated in this session.
-                        </td>
-                    </tr>
-
-                </tbody>
-
-            </table>
-
-        </div>
-    </div>
-
-</div>
-
-
-<!-- Report Generator Modal -->
-<div class="modal fade"
-     id="generateReportModal"
-     tabindex="-1"
-     aria-hidden="true">
-
-    <div class="modal-dialog modal-dialog-centered">
-
-        <div class="modal-content bg-surface border-panel text-main">
-
-            <!-- Modal Header -->
-            <div class="modal-header border-panel">
-
-                <h5 class="modal-title fw-bold text-primary-nova"
-                    data-i18n="reportGenerator">
-                    Report Generator
-                </h5>
-
-                <button type="button"
-                        class="btn-close btn-close-white"
-                        data-bs-dismiss="modal"
-                        data-i18n-title="close"
-                        title="Close">
-                </button>
-
-            </div>
-
-            <!-- Modal Body -->
-            <div class="modal-body">
-
-                <form id="generateReportForm">
-
-                    <!-- Report Type -->
-                    <div class="mb-3">
-
-                        <label class="form-label text-muted"
-                               for="report-type-select"
-                               data-i18n="reportType">
-                            Report Type
-                        </label>
-
-                        <select class="form-select bg-main border-panel text-main"
-                                id="report-type-select"
-                                required>
-
-                            <option value="Incident Summary"
-                                    data-i18n="incidentSummary">
-                                Incident Summary
-                            </option>
-
-                            <option value="Executive Brief"
-                                    data-i18n="executiveBriefWeekly">
-                                Executive Brief (Weekly)
-                            </option>
-
-                        </select>
-
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        Total de informes generados
                     </div>
 
-                    <!-- Incident UUID -->
-                    <div class="mb-3"
-                         id="incident-id-container">
+                    <div
+                        class="fs-3 fw-bold text-main mt-1"
+                        id="stat-total-reports"
+                    >
+                        0
+                    </div>
 
-                        <label class="form-label text-muted"
-                               for="report-incident-id"
-                               data-i18n="targetIncidentId">
-                            Target Incident UUID
-                        </label>
+                </div>
+
+            </div>
+
+            <!-- INFORMES DE INCIDENTES -->
+            <div class="col-md-4">
+
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        Resúmenes de incidentes
+                    </div>
+
+                    <div
+                        class="fs-3 fw-bold text-primary-nova mt-1"
+                        id="stat-incident-reports"
+                    >
+                        0
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- INFORMES EJECUTIVOS Y DE CUMPLIMIENTO -->
+            <div class="col-md-4">
+
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        Informes ejecutivos y de cumplimiento
+                    </div>
+
+                    <div
+                        class="fs-3 fw-bold text-success mt-1"
+                        id="stat-compliance-reports"
+                    >
+                        0
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- FILTROS DE BÚSQUEDA -->
+        <div class="card bg-surface border-panel mb-4 rounded-3">
+
+            <div class="card-body">
+
+                <div class="row g-3">
+
+                    <!-- BÚSQUEDA POR TÍTULO O IDENTIFICADOR -->
+                    <div class="col-md-4">
 
                         <input
                             type="text"
                             class="form-control bg-main border-panel text-main"
-                            id="report-incident-id"
-                            placeholder="Enter the incident UUID"
-                            data-i18n-placeholder="incidentIdExample"
-                            autocomplete="off"
-                            required>
-
-                        <div class="form-text text-muted">
-                            Enter the real UUID of an existing incident.
-                        </div>
+                            placeholder="Buscar informes por título o identificador..."
+                            id="search-reports"
+                            aria-label="Buscar informes por título o identificador"
+                        >
 
                     </div>
 
-                    <!-- Report Format -->
-                    <div class="mb-3">
+                    <!-- FILTRO POR TIPO -->
+                    <div class="col-md-3">
 
-                        <label class="form-label text-muted"
-                               for="report-format-select"
-                               data-i18n="format">
-                            Format
-                        </label>
+                        <select
+                            class="form-select bg-main border-panel text-main"
+                            id="filter-report-type"
+                            aria-label="Filtrar informes por tipo"
+                        >
 
-                        <select class="form-select bg-main border-panel text-main"
-                                id="report-format-select"
-                                required>
-
-                            <option value="PDF" data-i18n="pdfDocument">
-                                PDF Document
+                            <option value="">
+                                Todos los tipos
                             </option>
 
-                            <option value="CSV" data-i18n="csvExport">
-                                CSV Data Export
+                            <option value="Incident Summary">
+                                Resumen de incidente
                             </option>
 
-                            <option value="JSON" data-i18n="jsonRawData">
-                                JSON Raw Data
+                            <option value="Executive Brief">
+                                Informe ejecutivo
                             </option>
 
                         </select>
 
                     </div>
 
-                    <!-- Report Status -->
-                    <div id="reportStatus"
-                         class="alert d-none mt-3"
-                         role="alert">
-                    </div>
+                    <!-- FILTRO POR FECHA -->
+                    <div class="col-md-3">
 
-                    <!-- Submit -->
-                    <div class="d-grid gap-2 mt-4">
-
-                        <button type="submit"
-                                class="btn btn-primary fw-bold"
-                                id="btn-submit-report"
-                                data-i18n="compileGenerate">
-
-                            Compile & Generate
-
-                        </button>
+                        <input
+                            type="date"
+                            class="form-control bg-main border-panel text-main"
+                            id="filter-report-date"
+                            aria-label="Filtrar informes por fecha"
+                        >
 
                     </div>
 
-                </form>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- TABLA DE INFORMES -->
+        <div class="card bg-surface border-panel h-100 rounded-3">
+
+            <div class="table-responsive">
+
+                <table
+                    class="table table-dark table-hover mb-0 align-middle"
+                    style="--bs-table-bg: var(--bg-surface);"
+                >
+
+                    <!-- ENCABEZADOS -->
+                    <thead>
+
+                        <tr>
+
+                            <th scope="col">
+                                Identificador
+                            </th>
+
+                            <th scope="col">
+                                Título
+                            </th>
+
+                            <th scope="col">
+                                Tipo
+                            </th>
+
+                            <th scope="col">
+                                Fecha de generación
+                            </th>
+
+                            <th scope="col">
+                                Autor
+                            </th>
+
+                            <th scope="col" class="text-center">
+                                Descargar
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+                    <!-- CONTENIDO DINÁMICO -->
+                    <tbody id="table-reports-body">
+
+                        <tr>
+
+                            <td
+                                colspan="6"
+                                class="text-center text-muted py-4"
+                            >
+                                No se han generado informes en esta sesión.
+                            </td>
+
+                        </tr>
+
+                    </tbody>
+
+                </table>
 
             </div>
 
@@ -327,7 +268,170 @@
 
     </div>
 
-</div>
 
-<script src="js/modules/language.js"></script>
-<script src="js/utils/router.js"></script>
+    <!-- MODAL PARA GENERAR INFORMES -->
+    <div
+        class="modal fade"
+        id="generateReportModal"
+        tabindex="-1"
+        aria-labelledby="generateReportModalLabel"
+        aria-hidden="true"
+    >
+
+        <div class="modal-dialog modal-dialog-centered">
+
+            <div class="modal-content bg-surface border-panel text-main">
+
+                <!-- ENCABEZADO DEL MODAL -->
+                <div class="modal-header border-panel">
+
+                    <h5
+                        class="modal-title fw-bold text-primary-nova"
+                        id="generateReportModalLabel"
+                    >
+                        Generador de informes
+                    </h5>
+
+                    <button
+                        type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"
+                        title="Cerrar"
+                        aria-label="Cerrar"
+                    >
+                    </button>
+
+                </div>
+
+                <!-- CUERPO DEL MODAL -->
+                <div class="modal-body">
+
+                    <form id="generateReportForm">
+
+                        <!-- TIPO DE INFORME -->
+                        <div class="mb-3">
+
+                            <label
+                                class="form-label text-muted"
+                                for="report-type-select"
+                            >
+                                Tipo de informe
+                            </label>
+
+                            <select
+                                class="form-select bg-main border-panel text-main"
+                                id="report-type-select"
+                                required
+                            >
+
+                                <option value="Incident Summary">
+                                    Resumen de incidente
+                                </option>
+
+                                <option value="Executive Brief">
+                                    Informe ejecutivo (semanal)
+                                </option>
+
+                            </select>
+
+                        </div>
+
+                        <!-- IDENTIFICADOR DEL INCIDENTE -->
+                        <div
+                            class="mb-3"
+                            id="incident-id-container"
+                        >
+
+                            <label
+                                class="form-label text-muted"
+                                for="report-incident-id"
+                            >
+                                Identificador del incidente (UUID)
+                            </label>
+
+                            <input
+                                type="text"
+                                class="form-control bg-main border-panel text-main"
+                                id="report-incident-id"
+                                placeholder="Ingrese el UUID del incidente"
+                                autocomplete="off"
+                                required
+                            >
+
+                            <div class="form-text text-muted">
+                                Ingrese el identificador UUID real de un incidente existente en el sistema.
+                            </div>
+
+                        </div>
+
+                        <!-- FORMATO DEL INFORME -->
+                        <div class="mb-3">
+
+                            <label
+                                class="form-label text-muted"
+                                for="report-format-select"
+                            >
+                                Formato del informe
+                            </label>
+
+                            <select
+                                class="form-select bg-main border-panel text-main"
+                                id="report-format-select"
+                                required
+                            >
+
+                                <option value="PDF">
+                                    Documento PDF
+                                </option>
+
+                                <option value="CSV">
+                                    Exportación de datos CSV
+                                </option>
+
+                                <option value="JSON">
+                                    Datos en formato JSON
+                                </option>
+
+                            </select>
+
+                        </div>
+
+                        <!-- ESTADO DE GENERACIÓN -->
+                        <div
+                            id="reportStatus"
+                            class="alert d-none mt-3"
+                            role="alert"
+                            aria-live="polite"
+                        >
+                        </div>
+
+                        <!-- BOTÓN DE GENERACIÓN -->
+                        <div class="d-grid gap-2 mt-4">
+
+                            <button
+                                type="submit"
+                                class="btn btn-primary fw-bold"
+                                id="btn-submit-report"
+                            >
+
+                                <i class="bi bi-file-earmark-check me-1"></i>
+
+                                Generar informe
+
+                            </button>
+
+                        </div>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</body>
+
+</html>

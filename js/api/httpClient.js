@@ -3,7 +3,7 @@
     'use strict';
 
     // =========================================================
-    // CONFIGURATION
+    // CONFIGURACIÓN
     // =========================================================
 
     const TOKEN_KEY = 'nova_token';
@@ -11,17 +11,103 @@
     const DEFAULT_CREDENTIALS = 'include';
 
     // =========================================================
-    // API ERROR
+    // ERROR PERSONALIZADO DE API
     // =========================================================
 
     class ApiError extends Error {
+
         constructor(message, status = null, data = null) {
+
             super(message);
 
             this.name = 'ApiError';
             this.status = status;
             this.data = data;
+
         }
+
+    }
+
+    // =========================================================
+    // PROCESAMIENTO DE RESPUESTAS
+    // =========================================================
+
+    async function parseResponse(response) {
+
+        if (response.status === 204 || response.status === 205) {
+            return null;
+        }
+
+        const responseText = await response.text();
+
+        if (!responseText || !responseText.trim()) {
+            return null;
+        }
+
+        try {
+
+            return JSON.parse(responseText);
+
+        } catch {
+
+            return responseText;
+
+        }
+
+    }
+
+    // =========================================================
+    // EXTRACCIÓN DE MENSAJES DE ERROR
+    // =========================================================
+
+    function getErrorMessage(data, status) {
+
+        if (typeof data === 'string' && data.trim()) {
+            return data;
+        }
+
+        const serverMessage =
+            data?.message ||
+            data?.error ||
+            data?.detail;
+
+        if (serverMessage) {
+            return serverMessage;
+        }
+
+        switch (status) {
+
+            case 400:
+                return 'La solicitud enviada no es válida.';
+
+            case 401:
+                return 'La sesión no está autorizada. Inicia sesión nuevamente.';
+
+            case 403:
+                return 'No tienes permisos para realizar esta operación.';
+
+            case 404:
+                return 'No se encontró el recurso solicitado.';
+
+            case 409:
+                return 'La operación presenta un conflicto con los datos existentes.';
+
+            case 422:
+                return 'Los datos enviados no superan la validación del servidor.';
+
+            case 429:
+                return 'Se han realizado demasiadas solicitudes. Inténtalo más tarde.';
+
+            default:
+
+                if (status >= 500) {
+                    return 'Error interno del servidor. Inténtalo más tarde.';
+                }
+
+                return `Error HTTP: ${status}`;
+
+        }
+
     }
 
     // =========================================================
@@ -30,34 +116,43 @@
 
     const HttpClient = {
 
+        // =====================================================
+        // SOLICITUD PRINCIPAL
+        // =====================================================
+
         request: async (url, options = {}) => {
 
             if (!url || typeof url !== 'string') {
+
                 throw new ApiError(
-                    'A valid API URL is required.'
+                    'Se requiere una URL válida para realizar la solicitud.'
                 );
+
             }
 
             const headers = new Headers(options.headers || {});
 
             // -------------------------------------------------
-            // AUTHENTICATION
+            // AUTENTICACIÓN
             // -------------------------------------------------
 
             const token = sessionStorage.getItem(TOKEN_KEY);
 
-            // Optional JWT support.
-            // Cookie-based authentication is handled through
-            // fetch credentials below.
+            // Compatibilidad con autenticación JWT.
+            // La autenticación mediante cookies se gestiona
+            // utilizando la propiedad credentials de fetch.
+
             if (token) {
+
                 headers.set(
                     'Authorization',
                     `Bearer ${token}`
                 );
+
             }
 
             // -------------------------------------------------
-            // REQUEST BODY
+            // PROCESAMIENTO DEL BODY
             // -------------------------------------------------
 
             let body = options.body;
@@ -91,29 +186,43 @@
                 !isArrayBuffer &&
                 !isTypedArray;
 
+            // Los objetos y arreglos se convierten a JSON.
+
             if (isJsonObject) {
+
                 headers.set(
                     'Content-Type',
                     'application/json'
                 );
 
                 body = JSON.stringify(body);
+
             }
 
-            // The browser must generate the multipart boundary.
+            // El navegador administra automáticamente
+            // el límite multipart de FormData.
+
             if (isFormData) {
                 headers.delete('Content-Type');
             }
 
+            // Tipo de respuesta esperado.
+
             if (!headers.has('Accept')) {
-                headers.set('Accept', 'application/json');
+
+                headers.set(
+                    'Accept',
+                    'application/json'
+                );
+
             }
 
             // -------------------------------------------------
-            // FETCH OPTIONS
+            // OPCIONES DE FETCH
             // -------------------------------------------------
 
             const requestOptions = {
+
                 ...options,
 
                 method: (options.method || 'GET').toUpperCase(),
@@ -124,10 +233,11 @@
                     options.credentials ?? DEFAULT_CREDENTIALS,
 
                 body
+
             };
 
             // -------------------------------------------------
-            // REQUEST
+            // EJECUCIÓN DE LA SOLICITUD
             // -------------------------------------------------
 
             try {
@@ -138,107 +248,100 @@
                 );
 
                 // -------------------------------------------------
-                // EMPTY RESPONSE
+                // PROCESAMIENTO DE RESPUESTA
                 // -------------------------------------------------
 
-                if (response.status === 204) {
-                    return null;
-                }
+                const responseData = await parseResponse(response);
 
                 // -------------------------------------------------
-                // RESPONSE PARSING
-                // -------------------------------------------------
-
-                const responseText = await response.text();
-
-                let responseData = null;
-
-                if (responseText) {
-                    try {
-                        responseData = JSON.parse(responseText);
-                    } catch {
-                        responseData = responseText;
-                    }
-                }
-
-                // -------------------------------------------------
-                // HTTP ERRORS
+                // VALIDACIÓN HTTP
                 // -------------------------------------------------
 
                 if (!response.ok) {
 
-                    let message =
-                        responseData?.message ||
-                        responseData?.error ||
-                        responseData?.detail ||
-                        `HTTP Error: ${response.status}`;
-
-                    switch (response.status) {
-
-                        case 401:
-                            message =
-                                'Unauthorized. Please authenticate again.';
-                            break;
-
-                        case 403:
-                            message =
-                                'Access denied. Insufficient permissions.';
-                            break;
-
-                        case 404:
-                            message =
-                                responseData?.message ||
-                                'Requested resource not found.';
-                            break;
-
-                        default:
-                            if (response.status >= 500) {
-                                message =
-                                    responseData?.message ||
-                                    'Server error. Please try again later.';
-                            }
-                    }
+                    const message = getErrorMessage(
+                        responseData,
+                        response.status
+                    );
 
                     throw new ApiError(
                         message,
                         response.status,
                         responseData
                     );
+
                 }
 
                 return responseData;
 
             } catch (error) {
 
-                // Preserve API errors and their HTTP status.
+                // -------------------------------------------------
+                // ERRORES HTTP DE LA API
+                // -------------------------------------------------
+
                 if (error instanceof ApiError) {
 
-                    console.error('API Request Failed:', {
+                    console.error('NOVA SIEM - Error de API:', {
+
                         url,
+
                         method: requestOptions.method,
+
                         status: error.status,
+
                         message: error.message,
+
                         data: error.data
+
                     });
 
                     throw error;
+
                 }
 
-                // Network, CORS, DNS and fetch errors.
+                // -------------------------------------------------
+                // SOLICITUD CANCELADA
+                // -------------------------------------------------
+
+                if (error?.name === 'AbortError') {
+
+                    const abortError = new ApiError(
+                        'La solicitud fue cancelada.',
+                        null,
+                        null
+                    );
+
+                    abortError.name = 'AbortError';
+
+                    throw abortError;
+
+                }
+
+                // -------------------------------------------------
+                // ERRORES DE RED
+                // -------------------------------------------------
+
                 const networkError = new ApiError(
-                    'Unable to connect to the server. Check your connection and try again.',
+                    'No fue posible conectar con el servidor. Verifica tu conexión e inténtalo nuevamente.',
                     null,
                     error?.message || null
                 );
 
-                console.error('API Network Error:', {
+                console.error('NOVA SIEM - Error de conexión:', {
+
                     url,
+
                     method: requestOptions.method,
+
                     message: error?.message
+
                 });
 
                 throw networkError;
+
             }
+
         },
 
         // =====================================================
@@ -246,9 +349,13 @@
         // =====================================================
 
         get: (url, options = {}) =>
+
             HttpClient.request(url, {
+
                 ...options,
+
                 method: 'GET'
+
             }),
 
         // =====================================================
@@ -256,10 +363,15 @@
         // =====================================================
 
         post: (url, body, options = {}) =>
+
             HttpClient.request(url, {
+
                 ...options,
+
                 method: 'POST',
+
                 body
+
             }),
 
         // =====================================================
@@ -267,10 +379,15 @@
         // =====================================================
 
         put: (url, body, options = {}) =>
+
             HttpClient.request(url, {
+
                 ...options,
+
                 method: 'PUT',
+
                 body
+
             }),
 
         // =====================================================
@@ -278,10 +395,15 @@
         // =====================================================
 
         patch: (url, body, options = {}) =>
+
             HttpClient.request(url, {
+
                 ...options,
+
                 method: 'PATCH',
+
                 body
+
             }),
 
         // =====================================================
@@ -289,17 +411,23 @@
         // =====================================================
 
         delete: (url, options = {}) =>
+
             HttpClient.request(url, {
+
                 ...options,
+
                 method: 'DELETE'
+
             })
+
     };
 
     // =========================================================
-    // GLOBAL EXPORTS
+    // EXPORTACIONES GLOBALES
     // =========================================================
 
     window.HttpClient = HttpClient;
+
     window.ApiError = ApiError;
 
 })();

@@ -1,309 +1,683 @@
 
-<div class="container-fluid p-0">
+<!DOCTYPE html>
+<html lang="es">
 
-    <!-- Dashboard Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2 class="h4 mb-1 text-main fw-bold" data-i18n="dashboardTitle">
-                Security Operations Overview
-            </h2>
-            <p class="text-muted small mb-0" data-i18n="dashboardSubtitle">
-                Real-time security monitoring and threat visibility
-            </p>
-        </div>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-        <div class="d-flex align-items-center gap-2">
-            <span class="badge bg-success-subtle text-success border border-success">
-                <i class="bi bi-circle-fill me-1"></i>
-                <span data-i18n="systemOperational">System Operational</span>
-            </span>
+    <meta name="description"
+          content="NOVA SIEM - Panel de control de operaciones de seguridad">
 
-            <button class="btn btn-outline-info btn-sm" id="btn-refresh-dashboard">
-                <i class="bi bi-arrow-clockwise me-1"></i>
-                <span data-i18n="refresh">Refresh</span>
-            </button>
-        </div>
-    </div>
+    <meta name="theme-color" content="#0B1120">
 
-    <!-- Security Metrics -->
-    <div class="row g-3 mb-4">
+    <title>NOVA SIEM | Panel de control</title>
 
-        <div class="col-xl-3 col-md-6">
-            <div class="card bg-surface border-panel rounded-3 p-3 h-100">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <div class="text-muted small text-uppercase fw-semibold"
-                             data-i18n="totalEvents">
-                            Total Events
-                        </div>
-                        <div class="fs-2 fw-bold text-main mt-2"
-                             id="dashboard-total-events">0</div>
-                        <div class="text-muted small" data-i18n="eventsProcessed">
-                            Events processed
-                        </div>
-                    </div>
-                    <div class="rounded-3 p-3"
-                         style="background: rgba(56,189,248,.12); color: var(--info);">
-                        <i class="bi bi-activity fs-4"></i>
-                    </div>
-                </div>
+    <!-- BOOTSTRAP CSS -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <!-- ICONOS BOOTSTRAP -->
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    >
+
+    <!-- ESTILOS NOVA SIEM -->
+    <link rel="stylesheet" href="../assets/css/main.css">
+    <link rel="stylesheet" href="../assets/css/components.css">
+    <link rel="stylesheet" href="../assets/css/sidebar.css">
+
+</head>
+
+<body>
+
+    <div class="container-fluid p-0">
+
+        <!-- ENCABEZADO DEL PANEL -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+
+            <div>
+
+                <h2
+                    class="h4 mb-1 text-main fw-bold"
+                    data-i18n="dashboardTitle"
+                >
+                    Centro de operaciones de seguridad
+                </h2>
+
+                <p
+                    class="text-muted small mb-0"
+                    data-i18n="dashboardSubtitle"
+                >
+                    Supervisión de seguridad en tiempo real y visibilidad de amenazas
+                </p>
+
             </div>
-        </div>
 
-        <div class="col-xl-3 col-md-6">
-            <div class="card bg-surface border-panel rounded-3 p-3 h-100">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <div class="text-muted small text-uppercase fw-semibold"
-                             data-i18n="activeAlerts">
-                            Active Alerts
-                        </div>
-                        <div class="fs-2 fw-bold mt-2" style="color: var(--warning);"
-                             id="dashboard-active-alerts">0</div>
-                        <div class="text-muted small" data-i18n="requiringAttention">
-                            Requiring attention
-                        </div>
-                    </div>
-                    <div class="rounded-3 p-3"
-                         style="background: rgba(255,176,32,.12); color: var(--warning);">
-                        <i class="bi bi-bell-fill fs-4"></i>
-                    </div>
-                </div>
+
+            <!-- ESTADO DEL SISTEMA Y ACTUALIZACIÓN -->
+            <div class="d-flex align-items-center gap-2">
+
+                <span class="badge bg-success-subtle text-success border border-success">
+
+                    <i class="bi bi-circle-fill me-1"></i>
+
+                    <span data-i18n="systemOperational">
+                        Sistema operativo
+                    </span>
+
+                </span>
+
+                <button
+                    class="btn btn-outline-info btn-sm"
+                    id="btn-refresh-dashboard"
+                    type="button"
+                >
+
+                    <i class="bi bi-arrow-clockwise me-1"></i>
+
+                    <span data-i18n="refresh">
+                        Actualizar
+                    </span>
+
+                </button>
+
             </div>
+
         </div>
 
-        <div class="col-xl-3 col-md-6">
-            <div class="card bg-surface border-panel rounded-3 p-3 h-100">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <div class="text-muted small text-uppercase fw-semibold"
-                             data-i18n="openIncidents">
-                            Open Incidents
+
+        <!-- MÉTRICAS DE SEGURIDAD -->
+        <div class="row g-3 mb-4">
+
+            <!-- TOTAL DE EVENTOS -->
+            <div class="col-xl-3 col-md-6">
+
+                <div class="card bg-surface border-panel rounded-3 p-3 h-100">
+
+                    <div class="d-flex justify-content-between align-items-start">
+
+                        <div>
+
+                            <div
+                                class="text-muted small text-uppercase fw-semibold"
+                                data-i18n="totalEvents"
+                            >
+                                Total de eventos
+                            </div>
+
+                            <div
+                                class="fs-2 fw-bold text-main mt-2"
+                                id="dashboard-total-events"
+                            >
+                                0
+                            </div>
+
+                            <div
+                                class="text-muted small"
+                                data-i18n="eventsProcessed"
+                            >
+                                Eventos procesados
+                            </div>
+
                         </div>
-                        <div class="fs-2 fw-bold mt-2" style="color: var(--danger);"
-                             id="dashboard-open-incidents">0</div>
-                        <div class="text-muted small" data-i18n="underInvestigation">
-                            Under investigation
+
+                        <div
+                            class="rounded-3 p-3"
+                            style="background: rgba(56,189,248,.12); color: var(--info);"
+                        >
+
+                            <i class="bi bi-activity fs-4"></i>
+
                         </div>
+
                     </div>
-                    <div class="rounded-3 p-3"
-                         style="background: rgba(255,69,96,.12); color: var(--danger);">
-                        <i class="bi bi-shield-exclamation fs-4"></i>
-                    </div>
+
                 </div>
-            </div>
-        </div>
 
-        <div class="col-xl-3 col-md-6">
-            <div class="card bg-surface border-panel rounded-3 p-3 h-100">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <div class="text-muted small text-uppercase fw-semibold"
-                             data-i18n="activeRules">
-                            Active Detection Rules
+            </div>
+
+
+            <!-- ALERTAS ACTIVAS -->
+            <div class="col-xl-3 col-md-6">
+
+                <div class="card bg-surface border-panel rounded-3 p-3 h-100">
+
+                    <div class="d-flex justify-content-between align-items-start">
+
+                        <div>
+
+                            <div
+                                class="text-muted small text-uppercase fw-semibold"
+                                data-i18n="activeAlerts"
+                            >
+                                Alertas activas
+                            </div>
+
+                            <div
+                                class="fs-2 fw-bold mt-2"
+                                style="color: var(--warning);"
+                                id="dashboard-active-alerts"
+                            >
+                                0
+                            </div>
+
+                            <div
+                                class="text-muted small"
+                                data-i18n="requiringAttention"
+                            >
+                                Requieren atención
+                            </div>
+
                         </div>
-                        <div class="fs-2 fw-bold text-success mt-2"
-                             id="dashboard-active-rules">0</div>
-                        <div class="text-muted small" data-i18n="monitoringThreats">
-                            Monitoring threats
+
+                        <div
+                            class="rounded-3 p-3"
+                            style="background: rgba(255,176,32,.12); color: var(--warning);"
+                        >
+
+                            <i class="bi bi-bell-fill fs-4"></i>
+
                         </div>
+
                     </div>
-                    <div class="rounded-3 p-3"
-                         style="background: rgba(34,211,166,.12); color: var(--success);">
-                        <i class="bi bi-shield-check fs-4"></i>
-                    </div>
+
                 </div>
+
             </div>
-        </div>
 
-    </div>
 
-    <!-- Main Dashboard Content -->
-    <div class="row g-3 mb-4">
+            <!-- INCIDENTES ABIERTOS -->
+            <div class="col-xl-3 col-md-6">
 
-        <!-- Event Activity -->
-        <div class="col-xl-8">
-            <div class="card bg-surface border-panel rounded-3 h-100">
+                <div class="card bg-surface border-panel rounded-3 p-3 h-100">
 
-                <div class="card-header bg-transparent border-panel d-flex justify-content-between align-items-center">
-                    <div>
-                        <h5 class="text-main fw-bold mb-1" data-i18n="eventActivity">
-                            Event Activity
-                        </h5>
-                        <small class="text-muted" data-i18n="eventVolume">
-                            Security event volume over time
-                        </small>
+                    <div class="d-flex justify-content-between align-items-start">
+
+                        <div>
+
+                            <div
+                                class="text-muted small text-uppercase fw-semibold"
+                                data-i18n="openIncidents"
+                            >
+                                Incidentes abiertos
+                            </div>
+
+                            <div
+                                class="fs-2 fw-bold mt-2"
+                                style="color: var(--danger);"
+                                id="dashboard-open-incidents"
+                            >
+                                0
+                            </div>
+
+                            <div
+                                class="text-muted small"
+                                data-i18n="underInvestigation"
+                            >
+                                En investigación
+                            </div>
+
+                        </div>
+
+                        <div
+                            class="rounded-3 p-3"
+                            style="background: rgba(255,69,96,.12); color: var(--danger);"
+                        >
+
+                            <i class="bi bi-shield-exclamation fs-4"></i>
+
+                        </div>
+
                     </div>
 
-                    <select class="form-select form-select-sm bg-main border-panel text-main"
+                </div>
+
+            </div>
+
+
+            <!-- REGLAS DE DETECCIÓN ACTIVAS -->
+            <div class="col-xl-3 col-md-6">
+
+                <div class="card bg-surface border-panel rounded-3 p-3 h-100">
+
+                    <div class="d-flex justify-content-between align-items-start">
+
+                        <div>
+
+                            <div
+                                class="text-muted small text-uppercase fw-semibold"
+                                data-i18n="activeRules"
+                            >
+                                Reglas de detección activas
+                            </div>
+
+                            <div
+                                class="fs-2 fw-bold text-success mt-2"
+                                id="dashboard-active-rules"
+                            >
+                                0
+                            </div>
+
+                            <div
+                                class="text-muted small"
+                                data-i18n="monitoringThreats"
+                            >
+                                Supervisando amenazas
+                            </div>
+
+                        </div>
+
+                        <div
+                            class="rounded-3 p-3"
+                            style="background: rgba(34,211,166,.12); color: var(--success);"
+                        >
+
+                            <i class="bi bi-shield-check fs-4"></i>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- CONTENIDO PRINCIPAL DEL PANEL -->
+        <div class="row g-3 mb-4">
+
+            <!-- ACTIVIDAD DE EVENTOS -->
+            <div class="col-xl-8">
+
+                <div class="card bg-surface border-panel rounded-3 h-100">
+
+                    <div
+                        class="card-header bg-transparent border-panel
+                               d-flex justify-content-between align-items-center"
+                    >
+
+                        <div>
+
+                            <h5
+                                class="text-main fw-bold mb-1"
+                                data-i18n="eventActivity"
+                            >
+                                Actividad de eventos
+                            </h5>
+
+                            <small
+                                class="text-muted"
+                                data-i18n="eventVolume"
+                            >
+                                Volumen de eventos de seguridad a lo largo del tiempo
+                            </small>
+
+                        </div>
+
+
+                        <!-- PERÍODO DEL GRÁFICO -->
+                        <select
+                            class="form-select form-select-sm bg-main border-panel text-main"
                             id="dashboard-event-period"
-                            style="width: 140px;">
-                        <option value="24h" data-i18n="last24Hours">Last 24 hours</option>
-                        <option value="7d" data-i18n="last7Days">Last 7 days</option>
-                        <option value="30d" data-i18n="last30Days">Last 30 days</option>
-                    </select>
-                </div>
+                            style="width: 140px;"
+                            aria-label="Seleccionar período de actividad"
+                        >
 
-                <div class="card-body">
-                    <div id="dashboard-event-chart"
-                         style="height: 280px; width: 100%;">
+                            <option value="24h" data-i18n="last24Hours">
+                                Últimas 24 horas
+                            </option>
+
+                            <option value="7d" data-i18n="last7Days">
+                                Últimos 7 días
+                            </option>
+
+                            <option value="30d" data-i18n="last30Days">
+                                Últimos 30 días
+                            </option>
+
+                        </select>
+
                     </div>
+
+
+                    <div class="card-body">
+
+                        <div
+                            id="dashboard-event-chart"
+                            style="height: 280px; width: 100%;"
+                        >
+                        </div>
+
+                    </div>
+
                 </div>
 
             </div>
-        </div>
 
-        <!-- Severity Distribution -->
-        <div class="col-xl-4">
-            <div class="card bg-surface border-panel rounded-3 h-100">
 
-                <div class="card-header bg-transparent border-panel">
-                    <h5 class="text-main fw-bold mb-1" data-i18n="alertSeverity">
-                        Alert Severity
-                    </h5>
-                    <small class="text-muted" data-i18n="severityDistribution">
-                        Distribution by severity
-                    </small>
-                </div>
+            <!-- DISTRIBUCIÓN DE ALERTAS POR SEVERIDAD -->
+            <div class="col-xl-4">
 
-                <div class="card-body">
-                    <div id="dashboard-severity-chart"
-                         style="height: 280px; width: 100%;">
+                <div class="card bg-surface border-panel rounded-3 h-100">
+
+                    <div class="card-header bg-transparent border-panel">
+
+                        <h5
+                            class="text-main fw-bold mb-1"
+                            data-i18n="alertSeverity"
+                        >
+                            Severidad de las alertas
+                        </h5>
+
+                        <small
+                            class="text-muted"
+                            data-i18n="severityDistribution"
+                        >
+                            Distribución por nivel de severidad
+                        </small>
+
                     </div>
+
+
+                    <div class="card-body">
+
+                        <div
+                            id="dashboard-severity-chart"
+                            style="height: 280px; width: 100%;"
+                        >
+                        </div>
+
+                    </div>
+
                 </div>
 
             </div>
+
         </div>
 
-    </div>
 
-    <!-- Bottom Section -->
-    <div class="row g-3">
+        <!-- SECCIÓN INFERIOR -->
+        <div class="row g-3">
 
-        <!-- Recent Alerts -->
-        <div class="col-xl-7">
-            <div class="card bg-surface border-panel rounded-3 h-100">
+            <!-- ALERTAS RECIENTES -->
+            <div class="col-xl-7">
 
-                <div class="card-header bg-transparent border-panel d-flex justify-content-between align-items-center">
-                    <h5 class="text-main fw-bold mb-0" data-i18n="recentAlerts">
-                        Recent Alerts
-                    </h5>
+                <div class="card bg-surface border-panel rounded-3 h-100">
 
-                    <a href="#" class="small text-info text-decoration-none"
-                       data-route-link="alerts"
-                       data-i18n="viewAll">
-                        View all
-                    </a>
+                    <div
+                        class="card-header bg-transparent border-panel
+                               d-flex justify-content-between align-items-center"
+                    >
+
+                        <h5
+                            class="text-main fw-bold mb-0"
+                            data-i18n="recentAlerts"
+                        >
+                            Alertas recientes
+                        </h5>
+
+                        <a
+                            href="#"
+                            class="small text-info text-decoration-none"
+                            data-route-link="alerts"
+                            data-i18n="viewAll"
+                        >
+                            Ver todas
+                        </a>
+
+                    </div>
+
+
+                    <div class="table-responsive">
+
+                        <table
+                            class="table table-dark table-hover mb-0 align-middle"
+                            style="--bs-table-bg: var(--bg-surface);"
+                        >
+
+                            <thead>
+
+                                <tr>
+
+                                    <th data-i18n="alertId">
+                                        ID de alerta
+                                    </th>
+
+                                    <th data-i18n="description">
+                                        Descripción
+                                    </th>
+
+                                    <th data-i18n="severity">
+                                        Severidad
+                                    </th>
+
+                                    <th data-i18n="status">
+                                        Estado
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+
+                            <tbody id="dashboard-recent-alerts">
+
+                                <!-- Las alertas recientes se generan mediante dashboard.js -->
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
                 </div>
+
+            </div>
+
+
+            <!-- RESUMEN DE INCIDENTES -->
+            <div class="col-xl-5">
+
+                <div class="card bg-surface border-panel rounded-3 h-100">
+
+                    <div class="card-header bg-transparent border-panel">
+
+                        <h5
+                            class="text-main fw-bold mb-0"
+                            data-i18n="incidentOverview"
+                        >
+                            Resumen de incidentes
+                        </h5>
+
+                    </div>
+
+
+                    <div class="card-body">
+
+                        <!-- INCIDENTES CRÍTICOS -->
+                        <div
+                            class="d-flex justify-content-between align-items-center mb-3"
+                        >
+
+                            <span
+                                class="text-muted"
+                                data-i18n="criticalIncidents"
+                            >
+                                Críticos
+                            </span>
+
+                            <span
+                                class="badge bg-danger"
+                                id="dashboard-critical-incidents"
+                            >
+                                0
+                            </span>
+
+                        </div>
+
+
+                        <!-- INCIDENTES ALTOS -->
+                        <div
+                            class="d-flex justify-content-between align-items-center mb-3"
+                        >
+
+                            <span
+                                class="text-muted"
+                                data-i18n="highIncidents"
+                            >
+                                Altos
+                            </span>
+
+                            <span
+                                class="badge bg-warning text-dark"
+                                id="dashboard-high-incidents"
+                            >
+                                0
+                            </span>
+
+                        </div>
+
+
+                        <!-- INCIDENTES MEDIOS -->
+                        <div
+                            class="d-flex justify-content-between align-items-center mb-3"
+                        >
+
+                            <span
+                                class="text-muted"
+                                data-i18n="mediumIncidents"
+                            >
+                                Medios
+                            </span>
+
+                            <span
+                                class="badge bg-info text-dark"
+                                id="dashboard-medium-incidents"
+                            >
+                                0
+                            </span>
+
+                        </div>
+
+
+                        <hr class="border-panel">
+
+
+                        <!-- TOTAL DE INCIDENTES ABIERTOS -->
+                        <div class="d-flex justify-content-between align-items-center">
+
+                            <span
+                                class="text-main fw-semibold"
+                                data-i18n="totalOpen"
+                            >
+                                Total de incidentes abiertos
+                            </span>
+
+                            <span
+                                class="fs-4 fw-bold text-main"
+                                id="dashboard-total-open-incidents"
+                            >
+                                0
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- ACTIVIDAD DEL SISTEMA -->
+        <div class="card bg-surface border-panel rounded-3 mt-4">
+
+            <div
+                class="card-header bg-transparent border-panel
+                       d-flex justify-content-between align-items-center"
+            >
+
+                <h5
+                    class="text-main fw-bold mb-0"
+                    data-i18n="systemActivity"
+                >
+                    Actividad reciente del sistema
+                </h5>
+
+                <span
+                    class="badge bg-success-subtle text-success"
+                    data-i18n="liveMonitoring"
+                >
+                    Supervisión en tiempo real
+                </span>
+
+            </div>
+
+
+            <div class="card-body p-0">
 
                 <div class="table-responsive">
-                    <table class="table table-dark table-hover mb-0 align-middle"
-                           style="--bs-table-bg: var(--bg-surface);">
+
+                    <table
+                        class="table table-dark table-hover mb-0 align-middle"
+                        style="--bs-table-bg: var(--bg-surface);"
+                    >
 
                         <thead>
+
                             <tr>
-                                <th data-i18n="alertId">Alert ID</th>
-                                <th data-i18n="description">Description</th>
-                                <th data-i18n="severity">Severity</th>
-                                <th data-i18n="status">Status</th>
+
+                                <th data-i18n="timestamp">
+                                    Fecha y hora
+                                </th>
+
+                                <th data-i18n="activity">
+                                    Actividad
+                                </th>
+
+                                <th data-i18n="source">
+                                    Origen
+                                </th>
+
+                                <th data-i18n="result">
+                                    Resultado
+                                </th>
+
                             </tr>
+
                         </thead>
 
-                        <tbody id="dashboard-recent-alerts">
+
+                        <tbody id="dashboard-system-activity">
+
+                            <!-- La actividad del sistema se genera mediante dashboard.js -->
+
                         </tbody>
 
                     </table>
-                </div>
-
-            </div>
-        </div>
-
-        <!-- Incident Status -->
-        <div class="col-xl-5">
-            <div class="card bg-surface border-panel rounded-3 h-100">
-
-                <div class="card-header bg-transparent border-panel">
-                    <h5 class="text-main fw-bold mb-0" data-i18n="incidentOverview">
-                        Incident Overview
-                    </h5>
-                </div>
-
-                <div class="card-body">
-
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <span class="text-muted" data-i18n="criticalIncidents">
-                            Critical
-                        </span>
-                        <span class="badge bg-danger" id="dashboard-critical-incidents">0</span>
-                    </div>
-
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <span class="text-muted" data-i18n="highIncidents">
-                            High
-                        </span>
-                        <span class="badge bg-warning text-dark" id="dashboard-high-incidents">0</span>
-                    </div>
-
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <span class="text-muted" data-i18n="mediumIncidents">
-                            Medium
-                        </span>
-                        <span class="badge bg-info text-dark" id="dashboard-medium-incidents">0</span>
-                    </div>
-
-                    <hr class="border-panel">
-
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="text-main fw-semibold" data-i18n="totalOpen">
-                            Total Open
-                        </span>
-                        <span class="fs-4 fw-bold text-main"
-                              id="dashboard-total-open-incidents">0</span>
-                    </div>
 
                 </div>
 
-            </div>
-        </div>
-
-    </div>
-
-    <!-- System Activity -->
-    <div class="card bg-surface border-panel rounded-3 mt-4">
-
-        <div class="card-header bg-transparent border-panel d-flex justify-content-between align-items-center">
-            <h5 class="text-main fw-bold mb-0" data-i18n="systemActivity">
-                Recent System Activity
-            </h5>
-            <span class="badge bg-success-subtle text-success"
-                  data-i18n="liveMonitoring">
-                Live Monitoring
-            </span>
-        </div>
-
-        <div class="card-body p-0">
-
-            <div class="table-responsive">
-                <table class="table table-dark table-hover mb-0 align-middle"
-                       style="--bs-table-bg: var(--bg-surface);">
-
-                    <thead>
-                        <tr>
-                            <th data-i18n="timestamp">Timestamp</th>
-                            <th data-i18n="activity">Activity</th>
-                            <th data-i18n="source">Source</th>
-                            <th data-i18n="result">Result</th>
-                        </tr>
-                    </thead>
-
-                    <tbody id="dashboard-system-activity">
-                    </tbody>
-
-                </table>
             </div>
 
         </div>
 
     </div>
 
-</div>
+
+    <!--
+        Las bibliotecas compartidas, el enrutador y los módulos
+        de JavaScript se administran desde app.html.
+    -->
+
+</body>
+
+</html>

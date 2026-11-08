@@ -1,214 +1,540 @@
 
-<div class="container-fluid p-0">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0 text-main">Detection Engine (Rules Lab)</h2>
-        <button class="btn btn-primary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#createRuleModal">
-            <i class="bi bi-plus-square-dotted me-1"></i> Author New Rule
-        </button>
-    </div>
+<!DOCTYPE html>
+<html lang="es">
 
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-                <div class="text-muted small text-uppercase fw-semibold">Active Rules</div>
-                <div class="fs-3 fw-bold text-success mt-1" id="stat-active-rules">0</div>
-            </div>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta name="description"
+          content="NOVA SIEM - Motor de detección y administración de reglas de seguridad">
+
+    <meta name="theme-color" content="#0B1120">
+
+    <title>NOVA SIEM | Motor de detección</title>
+
+    <!-- BOOTSTRAP CSS -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <!-- ICONOS BOOTSTRAP -->
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    >
+
+    <!-- ESTILOS NOVA SIEM -->
+    <link rel="stylesheet" href="../assets/css/main.css">
+    <link rel="stylesheet" href="../assets/css/components.css">
+    <link rel="stylesheet" href="../assets/css/sidebar.css">
+
+</head>
+
+<body>
+
+    <div class="container-fluid p-0">
+
+        <!-- ENCABEZADO -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+
+            <h2 class="h4 mb-0 text-main">
+                Motor de detección (Laboratorio de reglas)
+            </h2>
+
+            <button
+                class="btn btn-primary btn-sm fw-bold"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#createRuleModal"
+            >
+
+                <i class="bi bi-plus-square-dotted me-1"></i>
+                Crear nueva regla
+
+            </button>
+
         </div>
 
-        <div class="col-md-3">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-                <div class="text-muted small text-uppercase fw-semibold">Disabled Rules</div>
-                <div class="fs-3 fw-bold text-secondary mt-1" id="stat-disabled-rules">0</div>
-            </div>
-        </div>
 
-        <div class="col-md-6">
-            <div class="card bg-surface border-panel h-100 p-3 rounded-3">
-                <div class="text-muted small text-uppercase fw-semibold">Engine Status</div>
-                <div class="d-flex align-items-center mt-1">
-                    <div class="spinner-grow spinner-grow-sm text-success me-2" role="status"></div>
-                    <span class="fs-5 fw-bold text-main">Processing Telemetry</span>
+        <!-- INDICADORES DEL MOTOR DE DETECCIÓN -->
+        <div class="row g-3 mb-4">
+
+            <!-- REGLAS ACTIVAS -->
+            <div class="col-md-3">
+
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        Reglas activas
+                    </div>
+
+                    <div
+                        class="fs-3 fw-bold text-success mt-1"
+                        id="stat-active-rules"
+                    >
+                        0
+                    </div>
+
                 </div>
-            </div>
-        </div>
-    </div>
 
-    <div class="card bg-surface border-panel mb-4 rounded-3">
-        <div class="card-body">
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <input
-                        type="text"
-                        class="form-control bg-main border-panel text-main"
-                        placeholder="Search by rule name or MITRE technique..."
-                        id="search-rules">
+            </div>
+
+
+            <!-- REGLAS DESHABILITADAS -->
+            <div class="col-md-3">
+
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        Reglas deshabilitadas
+                    </div>
+
+                    <div
+                        class="fs-3 fw-bold text-secondary mt-1"
+                        id="stat-disabled-rules"
+                    >
+                        0
+                    </div>
+
                 </div>
 
-                <div class="col-md-3">
-                    <select
-                        class="form-select bg-main border-panel text-main"
-                        id="filter-rule-status">
-                        <option value="">All States</option>
-                        <option value="Active">Active</option>
-                        <option value="Disabled">Disabled</option>
-                    </select>
+            </div>
+
+
+            <!-- ESTADO DEL MOTOR -->
+            <div class="col-md-6">
+
+                <div class="card bg-surface border-panel h-100 p-3 rounded-3">
+
+                    <div class="text-muted small text-uppercase fw-semibold">
+                        Estado del motor
+                    </div>
+
+                    <div class="d-flex align-items-center mt-1">
+
+                        <div
+                            class="spinner-grow spinner-grow-sm text-success me-2"
+                            role="status"
+                            aria-label="Motor en funcionamiento"
+                        >
+                        </div>
+
+                        <span class="fs-5 fw-bold text-main">
+                            Procesando telemetría
+                        </span>
+
+                    </div>
+
                 </div>
-            </div>
-        </div>
-    </div>
 
-    <div class="card bg-surface border-panel h-100 rounded-3">
-        <div class="table-responsive">
-            <table class="table table-dark table-hover mb-0 align-middle" style="--bs-table-bg: var(--bg-surface);">
-                <thead>
-                    <tr>
-                        <th style="width: 60px;">Status</th>
-                        <th>Rule Name</th>
-                        <th>Category</th>
-                        <th>MITRE ATT&CK</th>
-                        <th>Severity</th>
-                        <th class="text-center">Hits (Total)</th>
-                        <th class="text-center">Actions</th>
-                    </tr>
-                </thead>
-
-                <tbody id="table-rules-body"></tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="createRuleModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content bg-surface border-panel text-main">
-
-            <div class="modal-header border-panel">
-                <h5 class="modal-title fw-bold text-primary-nova">
-                    Author Detection Rule (Sigma Format)
-                </h5>
-
-                <button
-                    type="button"
-                    class="btn-close btn-close-white"
-                    data-bs-dismiss="modal"
-                    aria-label="Close">
-                </button>
             </div>
 
-            <div class="modal-body">
-                <form id="createRuleForm">
+        </div>
 
-                    <div class="row mb-3">
-                        <div class="col-md-8">
-                            <label class="form-label text-muted" for="ruleName">
-                                Rule Title
+
+        <!-- BÚSQUEDA Y FILTROS -->
+        <div class="card bg-surface border-panel mb-4 rounded-3">
+
+            <div class="card-body">
+
+                <div class="row g-3">
+
+                    <!-- BÚSQUEDA DE REGLAS -->
+                    <div class="col-md-4">
+
+                        <input
+                            type="text"
+                            class="form-control bg-main border-panel text-main"
+                            placeholder="Buscar por nombre de regla o técnica MITRE..."
+                            id="search-rules"
+                            aria-label="Buscar reglas de detección"
+                        >
+
+                    </div>
+
+
+                    <!-- FILTRO POR ESTADO -->
+                    <div class="col-md-3">
+
+                        <select
+                            class="form-select bg-main border-panel text-main"
+                            id="filter-rule-status"
+                            aria-label="Filtrar reglas por estado"
+                        >
+
+                            <option value="">Todos los estados</option>
+                            <option value="Active">Activas</option>
+                            <option value="Disabled">Deshabilitadas</option>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- TABLA DE REGLAS -->
+        <div class="card bg-surface border-panel h-100 rounded-3">
+
+            <div class="table-responsive">
+
+                <table
+                    class="table table-dark table-hover mb-0 align-middle"
+                    style="--bs-table-bg: var(--bg-surface);"
+                >
+
+                    <thead>
+
+                        <tr>
+
+                            <th style="width: 60px;">
+                                Estado
+                            </th>
+
+                            <th>
+                                Nombre de la regla
+                            </th>
+
+                            <th>
+                                Categoría
+                            </th>
+
+                            <th>
+                                MITRE ATT&CK
+                            </th>
+
+                            <th>
+                                Severidad
+                            </th>
+
+                            <th class="text-center">
+                                Coincidencias (total)
+                            </th>
+
+                            <th class="text-center">
+                                Acciones
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="table-rules-body">
+
+                        <!-- Las reglas se generan dinámicamente mediante detection.js -->
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- MODAL PARA CREAR UNA REGLA -->
+    <div
+        class="modal fade"
+        id="createRuleModal"
+        tabindex="-1"
+        aria-labelledby="createRuleModalLabel"
+        aria-hidden="true"
+    >
+
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+
+            <div class="modal-content bg-surface border-panel text-main">
+
+                <!-- ENCABEZADO DEL MODAL -->
+                <div class="modal-header border-panel">
+
+                    <h5
+                        class="modal-title fw-bold text-primary-nova"
+                        id="createRuleModalLabel"
+                    >
+
+                        Crear regla de detección (formato Sigma)
+
+                    </h5>
+
+                    <button
+                        type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"
+                        aria-label="Cerrar"
+                    >
+                    </button>
+
+                </div>
+
+
+                <!-- CUERPO DEL MODAL -->
+                <div class="modal-body">
+
+                    <form id="createRuleForm">
+
+                        <!-- NOMBRE Y SEVERIDAD -->
+                        <div class="row mb-3">
+
+                            <!-- NOMBRE DE LA REGLA -->
+                            <div class="col-md-8">
+
+                                <label
+                                    class="form-label text-muted"
+                                    for="ruleName"
+                                >
+
+                                    Nombre de la regla
+
+                                </label>
+
+                                <input
+                                    type="text"
+                                    id="ruleName"
+                                    class="form-control bg-main border-panel text-main"
+                                    required
+                                    maxlength="255"
+                                    placeholder="Ej.: Creación sospechosa de tareas programadas"
+                                >
+
+                            </div>
+
+
+                            <!-- SEVERIDAD -->
+                            <div class="col-md-4">
+
+                                <label
+                                    class="form-label text-muted"
+                                    for="ruleSeverity"
+                                >
+
+                                    Severidad
+
+                                </label>
+
+                                <select
+                                    id="ruleSeverity"
+                                    class="form-select bg-main border-panel text-main"
+                                    required
+                                >
+
+                                    <option value="CRITICAL">
+                                        Crítica
+                                    </option>
+
+                                    <option value="HIGH">
+                                        Alta
+                                    </option>
+
+                                    <option value="MEDIUM" selected>
+                                        Media
+                                    </option>
+
+                                    <option value="LOW">
+                                        Baja
+                                    </option>
+
+                                </select>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- CATEGORÍA DE LA REGLA -->
+                        <div class="mb-3">
+
+                            <label
+                                class="form-label text-muted"
+                                for="ruleCategory"
+                            >
+
+                                Categoría de la regla
+
+                            </label>
+
+                            <select
+                                id="ruleCategory"
+                                class="form-select bg-main border-panel text-main"
+                                required
+                            >
+
+                                <option value="CUSTOM" selected>
+                                    Personalizada
+                                </option>
+
+                                <option value="INITIAL_ACCESS">
+                                    Acceso inicial
+                                </option>
+
+                                <option value="EXECUTION">
+                                    Ejecución
+                                </option>
+
+                                <option value="PERSISTENCE">
+                                    Persistencia
+                                </option>
+
+                                <option value="PRIVILEGE_ESCALATION">
+                                    Escalada de privilegios
+                                </option>
+
+                                <option value="DEFENSE_EVASION">
+                                    Evasión de defensas
+                                </option>
+
+                                <option value="CREDENTIAL_ACCESS">
+                                    Acceso a credenciales
+                                </option>
+
+                                <option value="DISCOVERY">
+                                    Descubrimiento
+                                </option>
+
+                                <option value="LATERAL_MOVEMENT">
+                                    Movimiento lateral
+                                </option>
+
+                                <option value="COLLECTION">
+                                    Recopilación
+                                </option>
+
+                                <option value="COMMAND_AND_CONTROL">
+                                    Comando y control
+                                </option>
+
+                                <option value="EXFILTRATION">
+                                    Exfiltración
+                                </option>
+
+                                <option value="IMPACT">
+                                    Impacto
+                                </option>
+
+                            </select>
+
+                        </div>
+
+
+                        <!-- TÉCNICA MITRE ATT&CK -->
+                        <div class="mb-3">
+
+                            <label
+                                class="form-label text-muted"
+                                for="ruleMitre"
+                            >
+
+                                Identificador de técnica MITRE ATT&CK
+
                             </label>
 
                             <input
                                 type="text"
-                                id="ruleName"
+                                id="ruleMitre"
                                 class="form-control bg-main border-panel text-main"
-                                required
-                                maxlength="255"
-                                placeholder="e.g., Suspicious Scheduled Task Creation">
+                                placeholder="Ej.: T1053"
+                            >
+
                         </div>
 
-                        <div class="col-md-4">
-                            <label class="form-label text-muted" for="ruleSeverity">
-                                Severity
+
+                        <!-- LÓGICA DE DETECCIÓN -->
+                        <div class="mb-3">
+
+                            <label
+                                class="form-label text-muted"
+                                for="ruleSigma"
+                            >
+
+                                Lógica de detección (YAML/Sigma)
+
                             </label>
 
-                            <select
-                                id="ruleSeverity"
-                                class="form-select bg-main border-panel text-main"
-                                required>
-                                <option value="CRITICAL">Critical</option>
-                                <option value="HIGH">High</option>
-                                <option value="MEDIUM" selected>Medium</option>
-                                <option value="LOW">Low</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label text-muted" for="ruleCategory">
-                            Rule Category
-                        </label>
-
-                        <select
-                            id="ruleCategory"
-                            class="form-select bg-main border-panel text-main"
-                            required>
-                            <option value="CUSTOM" selected>Custom</option>
-                            <option value="INITIAL_ACCESS">Initial Access</option>
-                            <option value="EXECUTION">Execution</option>
-                            <option value="PERSISTENCE">Persistence</option>
-                            <option value="PRIVILEGE_ESCALATION">Privilege Escalation</option>
-                            <option value="DEFENSE_EVASION">Defense Evasion</option>
-                            <option value="CREDENTIAL_ACCESS">Credential Access</option>
-                            <option value="DISCOVERY">Discovery</option>
-                            <option value="LATERAL_MOVEMENT">Lateral Movement</option>
-                            <option value="COLLECTION">Collection</option>
-                            <option value="COMMAND_AND_CONTROL">Command and Control</option>
-                            <option value="EXFILTRATION">Exfiltration</option>
-                            <option value="IMPACT">Impact</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label text-muted" for="ruleMitre">
-                            MITRE ATT&CK Technique ID
-                        </label>
-
-                        <input
-                            type="text"
-                            id="ruleMitre"
-                            class="form-control bg-main border-panel text-main"
-                            placeholder="e.g., T1053">
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label text-muted" for="ruleSigma">
-                            Detection Logic (YAML/Sigma)
-                        </label>
-
-                        <textarea
-                            id="ruleSigma"
-                            class="form-control bg-main border-panel text-main"
-                            rows="8"
-                            style="font-family: monospace; font-size: 0.9rem;"
-                            required
-                            placeholder="logsource:
+                            <textarea
+                                id="ruleSigma"
+                                class="form-control bg-main border-panel text-main"
+                                rows="8"
+                                style="font-family: monospace; font-size: 0.9rem;"
+                                required
+                                placeholder="logsource:
     category: process_creation
     product: windows
 detection:
     selection:
         CommandLine|contains: 'schtasks /create'
-    condition: selection"></textarea>
-                    </div>
+    condition: selection"
+                            ></textarea>
 
-                    <div class="d-flex justify-content-between align-items-center mt-4">
-                        <div class="form-check form-switch">
-                            <input
-                                class="form-check-input"
-                                type="checkbox"
-                                id="ruleActiveSwitch"
-                                checked>
+                            <div class="form-text text-muted">
 
-                            <label
-                                class="form-check-label text-muted"
-                                for="ruleActiveSwitch">
-                                Enable immediately
-                            </label>
+                                Defina las fuentes de registro, los criterios de selección
+                                y las condiciones que activarán esta regla.
+
+                            </div>
+
                         </div>
 
-                        <button type="submit" class="btn btn-primary fw-bold">
-                            Deploy to Engine
-                        </button>
-                    </div>
 
-                </form>
+                        <!-- ACTIVACIÓN Y PUBLICACIÓN -->
+                        <div class="d-flex justify-content-between align-items-center mt-4">
+
+                            <div class="form-check form-switch">
+
+                                <input
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    id="ruleActiveSwitch"
+                                    checked
+                                >
+
+                                <label
+                                    class="form-check-label text-muted"
+                                    for="ruleActiveSwitch"
+                                >
+
+                                    Activar regla inmediatamente
+
+                                </label>
+
+                            </div>
+
+
+                            <button
+                                type="submit"
+                                class="btn btn-primary fw-bold"
+                            >
+
+                                <i class="bi bi-rocket-takeoff me-1"></i>
+                                Implementar en el motor
+
+                            </button>
+
+                        </div>
+
+                    </form>
+
+                </div>
+
             </div>
+
         </div>
+
     </div>
-</div>
+
+
+    <!--
+        Las bibliotecas compartidas, el enrutador y los módulos
+        de JavaScript se administran desde app.html.
+    -->
+
+</body>
+
+</html>

@@ -2,6 +2,10 @@
 (function () {
     'use strict';
 
+    // =========================================================
+    // DOM
+    // =========================================================
+
     const tbody = document.getElementById('table-rules-body');
     const statActive = document.getElementById('stat-active-rules');
     const statDisabled = document.getElementById('stat-disabled-rules');
@@ -9,16 +13,29 @@
     const searchInput = document.getElementById('search-rules');
     const statusFilter = document.getElementById('filter-rule-status');
 
+    // =========================================================
+    // STATE
+    // =========================================================
+
     let rules = [];
+    let currentAnalysis = null;
+
     let isActive = true;
     let isLoading = false;
+    let reloadRequested = false;
     let requestCounter = 0;
 
     const previousGlobals = {
         destroy: window.destroyCurrentModule,
         load: window.loadDetectionRules,
-        render: window.renderRulesTable
+        render: window.renderRulesTable,
+        analyze: window.analyzeDetectionRules,
+        getAnalysis: window.getDetectionAnalysis
     };
+
+    // =========================================================
+    // CONFIGURATION
+    // =========================================================
 
     const severityColors = {
         CRITICAL: '#EF4444',
@@ -28,25 +45,31 @@
     };
 
     const categoryLabels = {
-        INITIAL_ACCESS: 'Initial Access',
-        EXECUTION: 'Execution',
-        PERSISTENCE: 'Persistence',
-        PRIVILEGE_ESCALATION: 'Privilege Escalation',
-        DEFENSE_EVASION: 'Defense Evasion',
-        CREDENTIAL_ACCESS: 'Credential Access',
-        DISCOVERY: 'Discovery',
-        LATERAL_MOVEMENT: 'Lateral Movement',
-        COLLECTION: 'Collection',
-        COMMAND_AND_CONTROL: 'Command and Control',
-        EXFILTRATION: 'Exfiltration',
-        IMPACT: 'Impact',
-        CUSTOM: 'Custom'
+        INITIAL_ACCESS: 'Acceso inicial',
+        EXECUTION: 'Ejecución',
+        PERSISTENCE: 'Persistencia',
+        PRIVILEGE_ESCALATION: 'Escalada de privilegios',
+        DEFENSE_EVASION: 'Evasión de defensas',
+        CREDENTIAL_ACCESS: 'Acceso a credenciales',
+        DISCOVERY: 'Descubrimiento',
+        LATERAL_MOVEMENT: 'Movimiento lateral',
+        COLLECTION: 'Recopilación',
+        COMMAND_AND_CONTROL: 'Comando y control',
+        EXFILTRATION: 'Exfiltración',
+        IMPACT: 'Impacto',
+        CUSTOM: 'Personalizada'
     };
 
+    // =========================================================
+    // HELPERS
+    // =========================================================
+
     function t(key, fallback) {
-        return typeof window.t === 'function'
-            ? window.t(key, fallback)
-            : fallback;
+        if (typeof window.t === 'function') {
+            return window.t(key, fallback) || fallback;
+        }
+
+        return fallback;
     }
 
     function escapeHtml(value) {
@@ -66,12 +89,23 @@
             .replace(/[\s-]+/g, '_');
     }
 
+    function formatNumber(value) {
+        const number = Number(value);
+
+        return Number.isFinite(number)
+            ? number.toLocaleString()
+            : '0';
+    }
+
     function normalizeRule(rule) {
         if (!rule || typeof rule !== 'object' || !rule.id) {
-            throw new Error('Invalid detection rule received from backend.');
+            throw new Error(
+                'El backend devolvió una regla de detección no válida.'
+            );
         }
 
         return {
+            ...rule,
             id: String(rule.id),
             name: rule.name || '',
             category: normalizeValue(rule.category),
@@ -79,21 +113,25 @@
             severity: normalizeValue(rule.severity),
             sigmaLogic: rule.sigmaLogic || '',
             active: rule.active === true,
-            hitCount: Number(rule.hitCount) || 0
+            hitCount: Math.max(0, Number(rule.hitCount) || 0)
         };
     }
 
     function translateSeverity(severity) {
         const value = normalizeValue(severity);
 
-        const keys = {
-            CRITICAL: 'critical',
-            HIGH: 'high',
-            MEDIUM: 'medium',
-            LOW: 'low'
+        const labels = {
+            CRITICAL: ['critical', 'Crítica'],
+            HIGH: ['high', 'Alta'],
+            MEDIUM: ['medium', 'Media'],
+            LOW: ['low', 'Baja']
         };
 
-        return t(keys[value], value);
+        const item = labels[value];
+
+        return item
+            ? t(item[0], item[1])
+            : value || '--';
     }
 
     function translateCategory(category) {
@@ -115,7 +153,10 @@
             CUSTOM: 'custom'
         };
 
-        return t(keys[value], categoryLabels[value] || value);
+        return t(
+            keys[value],
+            categoryLabels[value] || value || '--'
+        );
     }
 
     function showTableMessage(message, type = 'muted') {
@@ -132,32 +173,169 @@
         tbody.replaceChildren(row);
     }
 
-    function calculateStats() {
-        const active = rules.filter(rule => rule.active).length;
-        const disabled = rules.length - active;
-
-        if (statActive) statActive.textContent = active;
-        if (statDisabled) statDisabled.textContent = disabled;
+    function dispatchDataUpdated(action) {
+        document.dispatchEvent(
+            new CustomEvent('nova:data-updated', {
+                detail: {
+                    source: 'detection',
+                    action,
+                    timestamp: new Date().toISOString()
+                }
+            })
+        );
     }
+
+    // =========================================================
+    // AUTOMATIC DETECTION ANALYSIS
+    // =========================================================
+
+    function analyzeDetectionRules() {
+        const analysis = {
+            totalRules: rules.length,
+            activeRules: 0,
+            disabledRules: 0,
+
+            triggeredRules: 0,
+            rulesWithoutHits: 0,
+
+            totalHits: 0,
+            averageHitsPerRule: 0,
+
+            bySeverity: {
+                CRITICAL: 0,
+                HIGH: 0,
+                MEDIUM: 0,
+                LOW: 0
+            },
+
+            byCategory: {},
+
+            mostTriggeredRules: [],
+
+            analyzedAt: new Date().toISOString()
+        };
+
+        rules.forEach(rule => {
+            if (rule.active) {
+                analysis.activeRules++;
+            } else {
+                analysis.disabledRules++;
+            }
+
+            const severity = normalizeValue(rule.severity);
+
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    analysis.bySeverity,
+                    severity
+                )
+            ) {
+                analysis.bySeverity[severity]++;
+            }
+
+            const category = normalizeValue(rule.category) || 'UNKNOWN';
+
+            analysis.byCategory[category] =
+                (analysis.byCategory[category] || 0) + 1;
+
+            analysis.totalHits += rule.hitCount;
+
+            if (rule.hitCount > 0) {
+                analysis.triggeredRules++;
+            } else {
+                analysis.rulesWithoutHits++;
+            }
+        });
+
+        if (analysis.totalRules > 0) {
+            analysis.averageHitsPerRule =
+                Number(
+                    (analysis.totalHits / analysis.totalRules).toFixed(2)
+                );
+        }
+
+        analysis.mostTriggeredRules = [...rules]
+            .filter(rule => rule.hitCount > 0)
+            .sort((a, b) => b.hitCount - a.hitCount)
+            .slice(0, 5)
+            .map(rule => ({
+                id: rule.id,
+                name: rule.name,
+                category: rule.category,
+                severity: rule.severity,
+                hitCount: rule.hitCount
+            }));
+
+        currentAnalysis = analysis;
+
+        // Exposición para que otros módulos puedan consultar el análisis.
+        window.detectionAnalysis = analysis;
+
+        document.dispatchEvent(
+            new CustomEvent('nova:detection-analyzed', {
+                detail: analysis
+            })
+        );
+
+        return analysis;
+    }
+
+    function getDetectionAnalysis() {
+        return currentAnalysis;
+    }
+
+    // =========================================================
+    // STATISTICS
+    // =========================================================
+
+    function calculateStats() {
+        if (!currentAnalysis) {
+            if (statActive) statActive.textContent = '0';
+            if (statDisabled) statDisabled.textContent = '0';
+            return;
+        }
+
+        if (statActive) {
+            statActive.textContent = formatNumber(
+                currentAnalysis.activeRules
+            );
+        }
+
+        if (statDisabled) {
+            statDisabled.textContent = formatNumber(
+                currentAnalysis.disabledRules
+            );
+        }
+    }
+
+    // =========================================================
+    // FILTERING
+    // =========================================================
 
     function getFilteredRules() {
         const search = searchInput?.value.trim().toLowerCase() || '';
-        const status = statusFilter?.value || '';
+        const status = normalizeValue(statusFilter?.value);
 
         return rules.filter(rule => {
             const matchesSearch =
                 !search ||
                 rule.name.toLowerCase().includes(search) ||
-                rule.mitreTechniqueId.toLowerCase().includes(search);
+                rule.mitreTechniqueId.toLowerCase().includes(search) ||
+                rule.category.toLowerCase().includes(search) ||
+                rule.severity.toLowerCase().includes(search);
 
             const matchesStatus =
                 !status ||
-                (status.toLowerCase() === 'active' && rule.active) ||
-                (status.toLowerCase() === 'disabled' && !rule.active);
+                (status === 'ACTIVE' && rule.active) ||
+                (status === 'DISABLED' && !rule.active);
 
             return matchesSearch && matchesStatus;
         });
     }
+
+    // =========================================================
+    // TABLE RENDERING
+    // =========================================================
 
     function renderRulesTable() {
         if (!isActive || !tbody) return;
@@ -169,8 +347,14 @@
         if (filteredRules.length === 0) {
             showTableMessage(
                 rules.length === 0
-                    ? t('noDetectionRules', 'No detection rules registered.')
-                    : t('noMatchingRules', 'No rules match the selected filters.')
+                    ? t(
+                        'noDetectionRules',
+                        'No hay reglas de detección registradas.'
+                    )
+                    : t(
+                        'noMatchingRules',
+                        'Ninguna regla coincide con los filtros seleccionados.'
+                    )
             );
 
             calculateStats();
@@ -195,7 +379,7 @@
                             type="checkbox"
                             data-rule-id="${escapeHtml(rule.id)}"
                             ${rule.active ? 'checked' : ''}
-                            aria-label="${rule.active ? 'Disable' : 'Enable'} rule ${escapeHtml(rule.name)}">
+                            aria-label="${rule.active ? 'Desactivar' : 'Activar'} regla ${escapeHtml(rule.name)}">
                     </div>
                 </td>
 
@@ -203,7 +387,9 @@
                     ${escapeHtml(rule.name)}
                 </td>
 
-                <td>${escapeHtml(translateCategory(rule.category))}</td>
+                <td>
+                    ${escapeHtml(translateCategory(rule.category))}
+                </td>
 
                 <td style="font-family: monospace; color: var(--primary);">
                     ${escapeHtml(rule.mitreTechniqueId || 'N/A')}
@@ -218,7 +404,7 @@
 
                 <td class="text-center fw-bold"
                     style="color: ${rule.hitCount > 0 ? '#F8FAFC' : '#94A3B8'}">
-                    ${rule.hitCount}
+                    ${formatNumber(rule.hitCount)}
                 </td>
 
                 <td class="text-center">
@@ -226,8 +412,8 @@
                         class="btn btn-sm btn-outline-secondary py-0 px-2"
                         type="button"
                         disabled
-                        title="Rule editing is not available in the backend yet"
-                        aria-label="Editing unavailable">
+                        title="La edición de reglas todavía no está disponible en el backend."
+                        aria-label="Edición no disponible">
                         <i class="bi bi-lock"></i>
                     </button>
                 </td>
@@ -239,12 +425,25 @@
         calculateStats();
     }
 
-    async function loadRules() {
-        if (!isActive || isLoading) return;
+    // =========================================================
+    // LOAD RULES
+    // =========================================================
 
-        if (!window.HttpClient || !window.ENDPOINTS?.DETECTION?.RULES) {
+    async function loadRules() {
+        if (!isActive) return;
+
+        // Evita solicitudes duplicadas cuando llegan varios eventos.
+        if (isLoading) {
+            reloadRequested = true;
+            return;
+        }
+
+        if (
+            !window.HttpClient ||
+            !window.ENDPOINTS?.DETECTION?.RULES
+        ) {
             showTableMessage(
-                'Detection rules API configuration is unavailable.',
+                'La configuración de la API de reglas de detección no está disponible.',
                 'danger'
             );
             return;
@@ -253,11 +452,15 @@
         const currentRequest = ++requestCounter;
 
         isLoading = true;
-        showTableMessage(t('loading', 'Loading detection rules...'));
+        reloadRequested = false;
+
+        showTableMessage(
+            t('loading', 'Cargando reglas de detección...')
+        );
 
         try {
-            const response = await HttpClient.get(
-                ENDPOINTS.DETECTION.RULES
+            const response = await window.HttpClient.get(
+                window.ENDPOINTS.DETECTION.RULES
             );
 
             if (!isActive || currentRequest !== requestCounter) {
@@ -266,12 +469,16 @@
 
             if (!response || !Array.isArray(response.data)) {
                 throw new Error(
-                    'Invalid detection rules response from backend.'
+                    'El backend devolvió una respuesta de reglas no válida.'
                 );
             }
 
             rules = response.data.map(normalizeRule);
 
+            // Primero se analiza la información recibida del backend.
+            analyzeDetectionRules();
+
+            // Después se actualiza la interfaz.
             renderRulesTable();
 
         } catch (error) {
@@ -279,13 +486,20 @@
                 return;
             }
 
-            console.error('Error loading detection rules:', error);
+            console.error(
+                'Error al cargar las reglas de detección:',
+                error
+            );
 
             rules = [];
+            currentAnalysis = null;
+            window.detectionAnalysis = null;
+
             calculateStats();
 
             showTableMessage(
-                error.message || 'Unable to load detection rules.',
+                error.message ||
+                'No fue posible cargar las reglas de detección.',
                 'danger'
             );
 
@@ -293,47 +507,76 @@
             if (currentRequest === requestCounter) {
                 isLoading = false;
             }
+
+            // Si hubo cambios mientras se cargaban las reglas,
+            // se realiza una sola carga adicional.
+            if (isActive && reloadRequested) {
+                reloadRequested = false;
+                loadRules();
+            }
         }
     }
 
+    // =========================================================
+    // TOGGLE RULE
+    // =========================================================
+
     async function toggleRule(id, checkbox) {
-        if (!isActive || !id || checkbox.disabled) return;
+        if (
+            !isActive ||
+            !id ||
+            !checkbox ||
+            checkbox.disabled
+        ) {
+            return;
+        }
 
         const previousState = !checkbox.checked;
 
         checkbox.disabled = true;
 
         try {
-            const response = await HttpClient.patch(
-                ENDPOINTS.DETECTION.TOGGLE_RULE(id)
+            const response = await window.HttpClient.patch(
+                window.ENDPOINTS.DETECTION.TOGGLE_RULE(id)
             );
 
             if (!isActive) return;
 
-            if (!response?.data || response.data.id !== id) {
+            if (
+                !response?.data ||
+                String(response.data.id) !== String(id)
+            ) {
                 throw new Error(
-                    'Invalid response when updating detection rule.'
+                    'El backend devolvió una respuesta no válida al actualizar la regla.'
                 );
             }
 
             const updatedRule = normalizeRule(response.data);
 
             rules = rules.map(rule =>
-                rule.id === id ? updatedRule : rule
+                rule.id === String(id) ? updatedRule : rule
             );
 
+            // Recalcula el análisis con el estado actualizado.
+            analyzeDetectionRules();
             renderRulesTable();
+
+            dispatchDataUpdated('rule-status-updated');
 
         } catch (error) {
             if (!isActive) return;
 
-            console.error('Error changing rule status:', error);
+            console.error(
+                'Error al cambiar el estado de la regla:',
+                error
+            );
 
             checkbox.checked = previousState;
             checkbox.disabled = false;
 
             alert(
-                error.message || 'Unable to update rule status.'
+                error.message ||
+                'No fue posible actualizar el estado de la regla.'
             );
         }
     }
@@ -350,16 +593,27 @@
         toggleRule(id, checkbox);
     }
 
+    // =========================================================
+    // CREATE RULE
+    // =========================================================
+
     async function handleCreateRule(event) {
         event.preventDefault();
 
-        if (!isActive) return;
+        if (!isActive || !formCreateRule) return;
 
-        const name = document.getElementById('ruleName')?.value.trim();
-        const category = document.getElementById('ruleCategory')?.value;
-        const severity = document.getElementById('ruleSeverity')?.value;
+        const name =
+            document.getElementById('ruleName')?.value.trim();
+
+        const category =
+            document.getElementById('ruleCategory')?.value;
+
+        const severity =
+            document.getElementById('ruleSeverity')?.value;
+
         const mitreTechniqueId =
             document.getElementById('ruleMitre')?.value.trim();
+
         const sigmaLogic =
             document.getElementById('ruleSigma')?.value.trim();
 
@@ -370,7 +624,10 @@
 
         if (!name || !category || !severity || !sigmaLogic) {
             alert(
-                t('completeRequiredFields', 'Please complete all required fields.')
+                t(
+                    'completeRequiredFields',
+                    'Por favor, completa todos los campos obligatorios.'
+                )
             );
             return;
         }
@@ -393,8 +650,8 @@
         }
 
         try {
-            const response = await HttpClient.post(
-                ENDPOINTS.DETECTION.RULES,
+            const response = await window.HttpClient.post(
+                window.ENDPOINTS.DETECTION.RULES,
                 payload
             );
 
@@ -402,7 +659,7 @@
 
             if (!response?.data?.id) {
                 throw new Error(
-                    'Invalid response when creating detection rule.'
+                    'El backend devolvió una respuesta no válida al crear la regla.'
                 );
             }
 
@@ -419,19 +676,29 @@
                 document.getElementById('createRuleModal');
 
             if (modalElement && window.bootstrap?.Modal) {
-                const modal = bootstrap.Modal.getInstance(modalElement);
+                const modal = window.bootstrap.Modal.getInstance(
+                    modalElement
+                );
+
                 modal?.hide();
             }
 
+            analyzeDetectionRules();
             renderRulesTable();
+
+            dispatchDataUpdated('rule-created');
 
         } catch (error) {
             if (!isActive) return;
 
-            console.error('Error creating detection rule:', error);
+            console.error(
+                'Error al crear la regla de detección:',
+                error
+            );
 
             alert(
-                error.message || 'Unable to create detection rule.'
+                error.message ||
+                'No fue posible crear la regla de detección.'
             );
 
         } finally {
@@ -440,6 +707,32 @@
             }
         }
     }
+
+    // =========================================================
+    // AUTOMATIC DATA UPDATES
+    // =========================================================
+
+    function handleDataUpdated(event) {
+        if (!isActive) return;
+
+        const source = event.detail?.source;
+
+        // La llegada de nuevos eventos puede modificar las
+        // coincidencias de las reglas en el backend.
+        //
+        // No escuchamos "detection" para evitar un ciclo de
+        // recargas cuando este módulo actualiza una regla.
+        if (
+            source === 'ingestion' ||
+            source === 'events'
+        ) {
+            loadRules();
+        }
+    }
+
+    // =========================================================
+    // UI EVENTS
+    // =========================================================
 
     function handleSearch() {
         renderRulesTable();
@@ -454,7 +747,10 @@
     }
 
     if (formCreateRule) {
-        formCreateRule.addEventListener('submit', handleCreateRule);
+        formCreateRule.addEventListener(
+            'submit',
+            handleCreateRule
+        );
     }
 
     if (searchInput) {
@@ -470,34 +766,67 @@
         handleLanguageChange
     );
 
+    document.addEventListener(
+        'nova:data-updated',
+        handleDataUpdated
+    );
+
+    // =========================================================
+    // PUBLIC API
+    // =========================================================
+
     window.loadDetectionRules = loadRules;
     window.renderRulesTable = renderRulesTable;
+    window.analyzeDetectionRules = analyzeDetectionRules;
+    window.getDetectionAnalysis = getDetectionAnalysis;
+
+    // =========================================================
+    // MODULE DESTRUCTION
+    // =========================================================
 
     function destroyDetectionModule() {
         if (!isActive) return;
 
         isActive = false;
         requestCounter++;
+        reloadRequested = false;
 
         if (tbody) {
-            tbody.removeEventListener('change', handleTableChange);
+            tbody.removeEventListener(
+                'change',
+                handleTableChange
+            );
         }
 
         if (formCreateRule) {
-            formCreateRule.removeEventListener('submit', handleCreateRule);
+            formCreateRule.removeEventListener(
+                'submit',
+                handleCreateRule
+            );
         }
 
         if (searchInput) {
-            searchInput.removeEventListener('input', handleSearch);
+            searchInput.removeEventListener(
+                'input',
+                handleSearch
+            );
         }
 
         if (statusFilter) {
-            statusFilter.removeEventListener('change', handleSearch);
+            statusFilter.removeEventListener(
+                'change',
+                handleSearch
+            );
         }
 
         document.removeEventListener(
             'nova:languageChanged',
             handleLanguageChange
+        );
+
+        document.removeEventListener(
+            'nova:data-updated',
+            handleDataUpdated
         );
 
         if (window.loadDetectionRules === loadRules) {
@@ -508,15 +837,36 @@
             window.renderRulesTable = previousGlobals.render;
         }
 
-        if (window.destroyCurrentModule === destroyDetectionModule) {
+        if (
+            window.analyzeDetectionRules === analyzeDetectionRules
+        ) {
+            window.analyzeDetectionRules = previousGlobals.analyze;
+        }
+
+        if (
+            window.getDetectionAnalysis === getDetectionAnalysis
+        ) {
+            window.getDetectionAnalysis = previousGlobals.getAnalysis;
+        }
+
+        if (
+            window.destroyCurrentModule === destroyDetectionModule
+        ) {
             window.destroyCurrentModule = previousGlobals.destroy;
         }
 
         rules = [];
+        currentAnalysis = null;
+        window.detectionAnalysis = null;
+
         isLoading = false;
     }
 
     window.destroyCurrentModule = destroyDetectionModule;
+
+    // =========================================================
+    // INITIALIZATION
+    // =========================================================
 
     loadRules();
 

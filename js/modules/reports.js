@@ -3,6 +3,14 @@
     'use strict';
 
     // =========================================================
+    // PREVENIR MÓDULOS DUPLICADOS
+    // =========================================================
+
+    if (typeof window.destroyCurrentModule === 'function') {
+        window.destroyCurrentModule();
+    }
+
+    // =========================================================
     // DOM
     // =========================================================
 
@@ -29,11 +37,25 @@
     // STATE
     // =========================================================
 
+    // Este arreglo contiene únicamente los informes generados
+    // durante la sesión actual del módulo.
+    //
+    // No existe un endpoint GET confirmado para consultar
+    // el historial persistido de informes.
+
     let generatedReports = [];
+    let reportAnalysis = null;
+
     let isGenerating = false;
     let isActive = true;
 
     const originalButtonText = btnSubmit?.textContent || '';
+
+    const previousGlobals = {
+        renderReportsTable: window.renderReportsTable,
+        getReportAnalysis: window.getReportAnalysis,
+        destroyCurrentModule: window.destroyCurrentModule
+    };
 
     // =========================================================
     // HELPERS
@@ -55,12 +77,17 @@
         })[char]);
     }
 
+    function normalize(value) {
+        return String(value ?? '').trim().toUpperCase();
+    }
+
     function formatReportDate(date) {
         if (!date) return '--';
 
-        const language = typeof window.getCurrentLanguage === 'function'
-            ? window.getCurrentLanguage()
-            : 'es';
+        const language =
+            typeof window.getCurrentLanguage === 'function'
+                ? window.getCurrentLanguage()
+                : 'es';
 
         const parsedDate = new Date(date);
 
@@ -87,8 +114,13 @@
         }
 
         const year = parsedDate.getFullYear();
-        const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
-        const day = String(parsedDate.getDate()).padStart(2, '0');
+        const month = String(
+            parsedDate.getMonth() + 1
+        ).padStart(2, '0');
+
+        const day = String(
+            parsedDate.getDate()
+        ).padStart(2, '0');
 
         return `${year}-${month}-${day}`;
     }
@@ -137,6 +169,100 @@
     }
 
     // =========================================================
+    // ANÁLISIS DE INFORMES
+    // =========================================================
+
+    function analyzeReports() {
+        const byType = {};
+        const byFormat = {};
+        const byAuthor = {};
+
+        let incidentReports = 0;
+        let executiveReports = 0;
+        let complianceReports = 0;
+
+        let reportsWithIncident = 0;
+        let invalidDates = 0;
+
+        let latestReportDate = null;
+
+        generatedReports.forEach(report => {
+            const type = report.type || 'UNKNOWN';
+            const format = normalize(report.format) || 'UNKNOWN';
+            const author = report.author || 'UNKNOWN';
+
+            byType[type] = (byType[type] || 0) + 1;
+            byFormat[format] = (byFormat[format] || 0) + 1;
+            byAuthor[author] = (byAuthor[author] || 0) + 1;
+
+            if (type === 'Incident Summary') {
+                incidentReports++;
+            }
+
+            if (type === 'Executive Brief') {
+                executiveReports++;
+            }
+
+            if (type === 'Compliance Audit') {
+                complianceReports++;
+            }
+
+            if (report.incidentDetails) {
+                reportsWithIncident++;
+            }
+
+            const date = new Date(report.generatedAt);
+
+            if (Number.isNaN(date.getTime())) {
+                invalidDates++;
+            } else if (
+                !latestReportDate ||
+                date > latestReportDate
+            ) {
+                latestReportDate = date;
+            }
+        });
+
+        reportAnalysis = {
+            totalReports: generatedReports.length,
+
+            byType,
+            byFormat,
+            byAuthor,
+
+            incidentReports,
+            executiveReports,
+            complianceReports,
+
+            reportsWithIncident,
+
+            invalidDates,
+
+            latestReportAt: latestReportDate
+                ? latestReportDate.toISOString()
+                : null,
+
+            scope: 'CURRENT_MODULE_SESSION',
+
+            analyzedAt: new Date().toISOString()
+        };
+
+        window.reportAnalysis = reportAnalysis;
+
+        document.dispatchEvent(
+            new CustomEvent('nova:reports-analyzed', {
+                detail: reportAnalysis
+            })
+        );
+
+        return reportAnalysis;
+    }
+
+    function getReportAnalysis() {
+        return reportAnalysis;
+    }
+
+    // =========================================================
     // STATISTICS
     // =========================================================
 
@@ -167,13 +293,20 @@
     // =========================================================
 
     function getFilteredReports() {
-        const search = searchInput?.value.toLowerCase().trim() || '';
+        const search =
+            searchInput?.value.toLowerCase().trim() || '';
+
         const selectedType = filterType?.value || '';
         const selectedDate = filterDate?.value || '';
 
         return generatedReports.filter(report => {
-            const reportId = String(report.reportId || '').toLowerCase();
-            const title = String(report.title || '').toLowerCase();
+            const reportId = String(
+                report.reportId || ''
+            ).toLowerCase();
+
+            const title = String(
+                report.title || ''
+            ).toLowerCase();
 
             const matchesSearch =
                 reportId.includes(search) ||
@@ -226,8 +359,9 @@
         filteredReports.forEach(report => {
             const tr = document.createElement('tr');
 
-            const format = String(report.format || '').toUpperCase();
-            const icon = formatIcons[format] || 'bi-file-earmark';
+            const format = normalize(report.format);
+            const icon = formatIcons[format] ||
+                'bi-file-earmark';
 
             const color = report.type === 'Incident Summary'
                 ? '#EF4444'
@@ -323,6 +457,17 @@
             return;
         }
 
+        if (!window.HttpClient || !window.ENDPOINTS) {
+            showStatus(
+                translate(
+                    'apiUnavailable',
+                    'The API client is not available.'
+                ),
+                'danger'
+            );
+            return;
+        }
+
         const type = typeSelect.value;
         const format = formatSelect.value;
         const incidentId = incidentInput?.value.trim() || '';
@@ -367,6 +512,7 @@
             return;
         }
 
+        // Se conserva el contrato de solicitud existente.
         const payload = {
             type,
             format
@@ -377,12 +523,13 @@
         }
 
         isGenerating = true;
+
         setButtonLoading(true);
         hideStatus();
 
         try {
-            const response = await HttpClient.post(
-                ENDPOINTS.REPORTS.GENERATE,
+            const response = await window.HttpClient.post(
+                window.ENDPOINTS.REPORTS.GENERATE,
                 payload
             );
 
@@ -416,6 +563,8 @@
                 incidentDetails: report.incidentDetails || null
             };
 
+            // Evita duplicar registros si el backend devuelve
+            // un identificador que ya está en la sesión.
             generatedReports = [
                 normalizedReport,
                 ...generatedReports.filter(
@@ -423,6 +572,7 @@
                 )
             ];
 
+            analyzeReports();
             renderReportsTable();
 
             showStatus(
@@ -445,9 +595,24 @@
             const modalElement = getElement('generateReportModal');
 
             if (modalElement && window.bootstrap?.Modal) {
-                const modal = window.bootstrap.Modal.getInstance(modalElement);
+                const modal = window.bootstrap.Modal.getInstance(
+                    modalElement
+                );
+
                 modal?.hide();
             }
+
+            // Notifica que se generó un informe.
+            document.dispatchEvent(
+                new CustomEvent('nova:data-updated', {
+                    detail: {
+                        source: 'reports',
+                        action: 'report-generated',
+                        reportId: normalizedReport.reportId,
+                        reportType: normalizedReport.type
+                    }
+                })
+            );
 
         } catch (error) {
             if (!isActive) return;
@@ -496,12 +661,30 @@
     }
 
     function initializeListeners() {
-        typeSelect?.addEventListener('change', handleTypeChange);
-        formGenerateReport?.addEventListener('submit', generateReport);
+        typeSelect?.addEventListener(
+            'change',
+            handleTypeChange
+        );
 
-        searchInput?.addEventListener('input', handleSearch);
-        filterType?.addEventListener('change', handleFilter);
-        filterDate?.addEventListener('change', handleFilter);
+        formGenerateReport?.addEventListener(
+            'submit',
+            generateReport
+        );
+
+        searchInput?.addEventListener(
+            'input',
+            handleSearch
+        );
+
+        filterType?.addEventListener(
+            'change',
+            handleFilter
+        );
+
+        filterDate?.addEventListener(
+            'change',
+            handleFilter
+        );
 
         document.addEventListener(
             'nova:languageChanged',
@@ -510,12 +693,30 @@
     }
 
     function removeListeners() {
-        typeSelect?.removeEventListener('change', handleTypeChange);
-        formGenerateReport?.removeEventListener('submit', generateReport);
+        typeSelect?.removeEventListener(
+            'change',
+            handleTypeChange
+        );
 
-        searchInput?.removeEventListener('input', handleSearch);
-        filterType?.removeEventListener('change', handleFilter);
-        filterDate?.removeEventListener('change', handleFilter);
+        formGenerateReport?.removeEventListener(
+            'submit',
+            generateReport
+        );
+
+        searchInput?.removeEventListener(
+            'input',
+            handleSearch
+        );
+
+        filterType?.removeEventListener(
+            'change',
+            handleFilter
+        );
+
+        filterDate?.removeEventListener(
+            'change',
+            handleFilter
+        );
 
         document.removeEventListener(
             'nova:languageChanged',
@@ -540,12 +741,26 @@
         }
 
         if (window.renderReportsTable === renderReportsTable) {
-            delete window.renderReportsTable;
+            window.renderReportsTable =
+                previousGlobals.renderReportsTable;
+        }
+
+        if (window.getReportAnalysis === getReportAnalysis) {
+            window.getReportAnalysis =
+                previousGlobals.getReportAnalysis;
         }
 
         if (window.destroyCurrentModule === destroyModule) {
-            delete window.destroyCurrentModule;
+            window.destroyCurrentModule =
+                previousGlobals.destroyCurrentModule;
         }
+
+        if (window.reportAnalysis === reportAnalysis) {
+            delete window.reportAnalysis;
+        }
+
+        generatedReports = [];
+        reportAnalysis = null;
     }
 
     // =========================================================
@@ -553,6 +768,7 @@
     // =========================================================
 
     window.renderReportsTable = renderReportsTable;
+    window.getReportAnalysis = getReportAnalysis;
     window.destroyCurrentModule = destroyModule;
 
     // =========================================================
@@ -560,7 +776,11 @@
     // =========================================================
 
     initializeListeners();
+
     updateIncidentField();
+
+    analyzeReports();
+
     renderReportsTable();
 
 })();
