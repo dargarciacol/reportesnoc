@@ -1,23 +1,36 @@
 
-(function() {
+(function () {
     const tbody = document.getElementById('table-events-body');
     const uploadForm = document.getElementById('uploadForm');
     const uploadStatus = document.getElementById('uploadStatus');
     const btnSubmit = document.getElementById('btn-submit-upload');
     const fileInput = document.getElementById('fileInput');
 
+    let events = [];
+    let loading = false;
+
     function t(key, fallback) {
         return typeof window.t === 'function'
-            ? window.t(key, fallback)
+            ? window.t(key, fallback) || fallback
             : fallback;
+    }
+
+    function escapeHTML(value) {
+        return String(value ?? '').replace(/[&<>"']/g, character => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        })[character]);
     }
 
     function translateSeverity(severity) {
         const keys = {
-            Critical: 'critical',
-            High: 'high',
-            Medium: 'medium',
-            Low: 'low'
+            CRITICAL: 'critical',
+            HIGH: 'high',
+            MEDIUM: 'medium',
+            LOW: 'low'
         };
 
         return t(keys[severity], severity);
@@ -47,189 +60,323 @@
         return t(keys[action], action);
     }
 
-    function formatEventDate(date) {
-        const language = typeof window.getCurrentLanguage === 'function'
-            ? window.getCurrentLanguage()
-            : 'es';
+    function getSeverityColor(severity) {
+        const colors = {
+            CRITICAL: '#EF4444',
+            HIGH: '#F97316',
+            MEDIUM: '#EAB308',
+            LOW: '#06B6D4'
+        };
+
+        return colors[severity] || '#6B7280';
+    }
+
+    function formatEventDate(dateValue) {
+        if (!dateValue) return '--';
+
+        const date = new Date(dateValue);
+
+        if (Number.isNaN(date.getTime())) return '--';
+
+        const language =
+            typeof window.getCurrentLanguage === 'function'
+                ? window.getCurrentLanguage()
+                : 'es';
 
         return new Intl.DateTimeFormat(
             language === 'en' ? 'en-US' : 'es-CO',
             {
                 dateStyle: 'short',
-                timeStyle: 'medium',
-                timeZone: 'UTC'
+                timeStyle: 'medium'
             }
-        ).format(new Date(date)) + ' UTC';
+        ).format(date);
     }
 
-    let syntheticEvents = [
-        {
-            id: "EVT-9921",
-            time: "2026-11-07T16:45:00Z",
-            ip: "192.168.1.45",
-            user: "SYSTEM",
-            type: "Authentication",
-            action: "Login Failed",
-            severity: "High",
-            color: "#F97316"
-        },
-        {
-            id: "EVT-9920",
-            time: "2026-11-07T16:42:15Z",
-            ip: "10.0.0.12",
-            user: "s.garcia",
-            type: "Process Execution",
-            action: "powershell.exe -enc...",
-            severity: "Critical",
-            color: "#EF4444"
-        },
-        {
-            id: "EVT-9919",
-            time: "2026-11-07T16:30:00Z",
-            ip: "203.0.113.45",
-            user: "s.garcia",
-            type: "Network Connection",
-            action: "Blocked by Firewall",
-            severity: "Medium",
-            color: "#EAB308"
-        },
-        {
-            id: "EVT-9918",
-            time: "2026-11-07T15:22:10Z",
-            ip: "192.168.1.100",
-            user: "j.doe",
-            type: "File Access",
-            action: "Read shadow copy",
-            severity: "Critical",
-            color: "#EF4444"
-        },
-        {
-            id: "EVT-9917",
-            time: "2026-11-07T15:10:05Z",
-            ip: "192.168.1.10",
-            user: "admin",
-            type: "Configuration",
-            action: "Service Stopped",
-            severity: "Low",
-            color: "#06B6D4"
-        }
-    ];
+    function normalizeEvent(event) {
+        return {
+            id: event.id,
+            time: event.timestamp,
+            ip: event.sourceIp || '--',
+            user: event.userIdentity || '--',
+            type: event.eventType || '--',
+            action: event.action || '--',
+            severity: event.severity || 'LOW',
+            rawData: event.rawData || {},
+            synthetic: event.synthetic
+        };
+    }
 
     function renderEventsTable() {
         if (!tbody) return;
 
-        tbody.innerHTML = '';
+        if (loading) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4">
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        ${t('loading', 'Loading events...')}
+                    </td>
+                </tr>
+            `;
+            return;
+        }
 
-        syntheticEvents.forEach(evt => {
-            const tr = document.createElement('tr');
+        if (!events.length) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4 text-secondary">
+                        ${t('noEvents', 'No events found')}
+                    </td>
+                </tr>
+            `;
+            return;
+        }
 
-            const action = evt.action === 'powershell.exe -enc...'
-                || evt.action === 'Read shadow copy'
-                ? evt.action
-                : translateEventAction(evt.action);
+        tbody.innerHTML = events.map(evt => {
+            const color = getSeverityColor(evt.severity);
 
-            tr.innerHTML = `
-                <td style="color: var(--text-muted); font-size: 0.85rem;">
-                    ${formatEventDate(evt.time)}
-                </td>
+            const action = translateEventAction(evt.action);
 
-                <td style="font-family: monospace;">
-                    ${evt.ip}
-                </td>
+            return `
+                <tr>
+                    <td style="color: var(--text-muted); font-size: 0.85rem;">
+                        ${escapeHTML(formatEventDate(evt.time))}
+                    </td>
 
-                <td>
-                    ${evt.user}
-                </td>
+                    <td style="font-family: monospace;">
+                        ${escapeHTML(evt.ip)}
+                    </td>
 
-                <td>
-                    ${translateEventType(evt.type)}
-                </td>
+                    <td>
+                        ${escapeHTML(evt.user)}
+                    </td>
 
-                <td>
-                    ${action}
-                </td>
+                    <td>
+                        ${escapeHTML(translateEventType(evt.type))}
+                    </td>
 
-                <td>
-                    <span class="badge"
-                          style="background-color: ${evt.color}20; color: ${evt.color}; border: 1px solid ${evt.color};">
-                        ${translateSeverity(evt.severity)}
-                    </span>
-                </td>
+                    <td>
+                        ${escapeHTML(action)}
+                    </td>
 
-                <td class="text-center">
-                    <button class="btn btn-sm btn-outline-info py-0 px-2"
-                            onclick="viewEventDetails('${evt.id}')"
-                            title="${t('viewDetails', 'View details')}"
-                            aria-label="${t('viewDetails', 'View details')} ${evt.id}">
-                        <i class="bi bi-list-columns-reverse"></i>
-                    </button>
-                </td>
+                    <td>
+                        <span class="badge"
+                              style="
+                                background-color: ${color}20;
+                                color: ${color};
+                                border: 1px solid ${color};
+                              ">
+                            ${escapeHTML(translateSeverity(evt.severity))}
+                        </span>
+                    </td>
+
+                    <td class="text-center">
+                        <button
+                            class="btn btn-sm btn-outline-info py-0 px-2"
+                            data-event-id="${escapeHTML(evt.id)}"
+                            title="${escapeHTML(t('viewDetails', 'View details'))}"
+                            aria-label="${escapeHTML(t('viewDetails', 'View details'))}"
+                        >
+                            <i class="bi bi-list-columns-reverse"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function loadEvents() {
+        if (!tbody || typeof HttpClient === 'undefined') {
+            console.error('Events: HttpClient or table element not found.');
+            return;
+        }
+
+        loading = true;
+        renderEventsTable();
+
+        try {
+            const response = await HttpClient.get(ENDPOINTS.EVENTS.LIST);
+
+            const page = response?.data;
+
+            if (!page || !Array.isArray(page.content)) {
+                throw new Error('Unexpected events API response format.');
+            }
+
+            events = page.content.map(normalizeEvent);
+
+            renderEventsTable();
+
+        } catch (error) {
+            console.error('Failed to load events:', error);
+
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-danger py-4">
+                        ${escapeHTML(error.message || 'Unable to load events')}
+                    </td>
+                </tr>
             `;
 
-            tbody.appendChild(tr);
-        });
+        } finally {
+            loading = false;
+        }
+    }
+
+    async function viewEventDetails(id) {
+        if (!id) return;
+
+        try {
+            const response = await HttpClient.get(
+                ENDPOINTS.EVENTS.DETAILS(id)
+            );
+
+            const event = response?.data;
+
+            if (!event) {
+                throw new Error('Event details not found.');
+            }
+
+            console.log('EVENT DETAILS:', event);
+
+            const details = [
+                `ID: ${event.id}`,
+                `Timestamp: ${event.timestamp || '--'}`,
+                `Source IP: ${event.sourceIp || '--'}`,
+                `User: ${event.userIdentity || '--'}`,
+                `Event Type: ${event.eventType || '--'}`,
+                `Action: ${event.action || '--'}`,
+                `Severity: ${event.severity || '--'}`,
+                `Synthetic: ${event.synthetic}`,
+                '',
+                'Raw Data:',
+                JSON.stringify(event.rawData || {}, null, 2)
+            ].join('\n');
+
+            window.alert(details);
+
+        } catch (error) {
+            console.error('Failed to load event details:', error);
+
+            window.alert(
+                error.message ||
+                t('eventDetailsError', 'Unable to load event details')
+            );
+        }
+    }
+
+    async function uploadExcel(file) {
+        const formData = new FormData();
+
+        formData.append('file', file);
+
+        const response = await HttpClient.post(
+            ENDPOINTS.INGEST.UPLOAD_EXCEL,
+            formData
+        );
+
+        return response;
+    }
+
+    function showUploadStatus(message, type) {
+        if (!uploadStatus) return;
+
+        uploadStatus.className = `alert alert-${type} mt-3`;
+        uploadStatus.textContent = message;
+        uploadStatus.classList.remove('d-none');
+    }
+
+    function resetUploadButton() {
+        if (!btnSubmit) return;
+
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = t(
+            'processNormalise',
+            'Process & Normalise'
+        );
     }
 
     if (uploadForm) {
-        uploadForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
+        uploadForm.addEventListener('submit', async event => {
+            event.preventDefault();
 
-            const file = fileInput.files[0];
+            const file = fileInput?.files?.[0];
 
-            if (!file) return;
+            if (!file) {
+                showUploadStatus(
+                    t('selectFile', 'Please select an Excel file.'),
+                    'warning'
+                );
+                return;
+            }
 
-            btnSubmit.disabled = true;
+            const validExtension = /\.(xls|xlsx)$/i.test(file.name);
 
-            btnSubmit.innerHTML = `
-                <span class="spinner-border spinner-border-sm"
-                      role="status"
-                      aria-hidden="true"></span>
-                ${t('processing', 'Processing...')}
-            `;
+            if (!validExtension) {
+                showUploadStatus(
+                    t('invalidFile', 'Only Excel files (.xls, .xlsx) are supported.'),
+                    'danger'
+                );
+                return;
+            }
 
-            uploadStatus.classList.add('d-none');
-            uploadStatus.className = 'alert mt-3';
+            if (btnSubmit) {
+                btnSubmit.disabled = true;
+                btnSubmit.innerHTML = `
+                    <span class="spinner-border spinner-border-sm me-2"
+                          role="status"
+                          aria-hidden="true"></span>
+                    ${t('processing', 'Processing...')}
+                `;
+            }
 
-            setTimeout(() => {
-                uploadStatus.classList.add('alert-success');
-                uploadStatus.style.backgroundColor = 'rgba(34, 197, 94, 0.1)';
-                uploadStatus.style.borderColor = '#22C55E';
-                uploadStatus.style.color = '#22C55E';
+            if (uploadStatus) {
+                uploadStatus.classList.add('d-none');
+            }
 
-                uploadStatus.textContent =
-                    `${t('success', 'Success')}: ` +
-                    `${t('normalisedIngested', 'Normalised and ingested events from')} ${file.name}`;
+            try {
+                const result = await uploadExcel(file);
 
-                syntheticEvents.unshift({
-                    id: "EVT-" + Math.floor(Math.random() * 10000),
-                    time: new Date().toISOString(),
-                    ip: "10.10.1.55",
-                    user: "ingest.service",
-                    type: "Data Ingestion",
-                    action: "Excel File Processed",
-                    severity: "Medium",
-                    color: "#EAB308"
-                });
+                console.log('EXCEL INGESTION RESULT:', result);
 
-                renderEventsTable();
-                uploadForm.reset();
-
-                uploadStatus.classList.remove('d-none');
-                btnSubmit.disabled = false;
-                btnSubmit.textContent = t(
-                    'processNormalise',
-                    'Process & Normalise'
+                showUploadStatus(
+                    `${t('success', 'Success')}: ${file.name}`,
+                    'success'
                 );
 
-            }, 1200);
+                uploadForm.reset();
+
+                await loadEvents();
+
+            } catch (error) {
+                console.error('Excel ingestion failed:', error);
+
+                showUploadStatus(
+                    error.message ||
+                    t('uploadError', 'Failed to process Excel file.'),
+                    'danger'
+                );
+
+            } finally {
+                resetUploadButton();
+            }
         });
     }
 
-    window.viewEventDetails = function(id) {
-        console.log("Viewing event details for:", id);
-    };
+    if (tbody) {
+        tbody.addEventListener('click', event => {
+            const button = event.target.closest('[data-event-id]');
 
-    // Actualiza los registros dinámicos cuando cambia ES/EN.
+            if (!button) return;
+
+            viewEventDetails(button.dataset.eventId);
+        });
+    }
+
+    window.viewEventDetails = viewEventDetails;
+    window.loadEvents = loadEvents;
+    window.renderEventsTable = renderEventsTable;
+
     document.addEventListener('nova:languageChanged', () => {
         renderEventsTable();
 
@@ -241,5 +388,6 @@
         }
     });
 
-    renderEventsTable();
+    loadEvents();
+
 })();

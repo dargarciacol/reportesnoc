@@ -17,111 +17,20 @@
 
     const periodSelect = document.getElementById('dashboard-event-period');
 
-    // Helper de traducción.
+    let dashboardData = null;
+
     function tr(key, fallback) {
         if (typeof window.t === 'function') {
-            return window.t(key);
+            return window.t(key, fallback);
         }
 
         if (typeof window.translateKey === 'function') {
-            return window.translateKey(key);
+            return window.translateKey(key) || fallback;
         }
 
         return fallback;
     }
 
-    // Datos sintéticos del SOC.
-    const dashboardData = {
-        metrics: {
-            totalEvents: 24891,
-            activeAlerts: 24,
-            openIncidents: 8,
-            activeRules: 42
-        },
-
-        incidents: {
-            critical: 2,
-            high: 3,
-            medium: 3
-        },
-
-        events: {
-            '24h': [120, 180, 150, 230, 190, 280, 220, 310, 260, 350, 290, 400],
-            '7d': [850, 1100, 950, 1400, 1250, 1600, 1350],
-            '30d': [3200, 4100, 3800, 4600, 4200, 5100, 4800, 5500]
-        },
-
-        severity: {
-            critical: 12,
-            high: 28,
-            medium: 35,
-            low: 25
-        },
-
-        alerts: [
-            {
-                id: 'ALT-2045',
-                description: 'Suspicious PowerShell Execution',
-                severity: 'Critical',
-                status: 'New',
-                time: '16:45:20 UTC'
-            },
-            {
-                id: 'ALT-2044',
-                description: 'Multiple Failed Login Attempts',
-                severity: 'High',
-                status: 'In Progress',
-                time: '16:42:15 UTC'
-            },
-            {
-                id: 'ALT-2043',
-                description: 'Unusual Outbound Network Traffic',
-                severity: 'Medium',
-                status: 'Under Investigation',
-                time: '16:30:00 UTC'
-            },
-            {
-                id: 'ALT-2042',
-                description: 'Suspicious File Modification',
-                severity: 'High',
-                status: 'New',
-                time: '16:22:10 UTC'
-            }
-        ],
-
-        activity: [
-            {
-                action: 'New security alert detected',
-                source: 'Detection Engine',
-                result: 'Success',
-                time: '16:45:20 UTC',
-                type: 'success'
-            },
-            {
-                action: 'Incident INC-1002 updated',
-                source: 'SOC Analyst',
-                result: 'Updated',
-                time: '16:40:15 UTC',
-                type: 'info'
-            },
-            {
-                action: 'Event ingestion completed',
-                source: 'Ingestion Service',
-                result: 'Success',
-                time: '16:35:00 UTC',
-                type: 'success'
-            },
-            {
-                action: 'Detection rule triggered',
-                source: 'Sigma Engine',
-                result: 'Triggered',
-                time: '16:30:00 UTC',
-                type: 'warning'
-            }
-        ]
-    };
-
-    // Traducción de valores visibles.
     function translateSeverity(value) {
         const labels = {
             Critical: ['critical', 'Critical'],
@@ -131,7 +40,8 @@
         };
 
         const item = labels[value];
-        return item ? tr(item[0], item[1]) : value;
+
+        return item ? tr(item[0], item[1]) : value || '--';
     }
 
     function translateStatus(value) {
@@ -139,58 +49,151 @@
             New: ['new', 'New'],
             'In Progress': ['inProgress', 'In Progress'],
             'Under Investigation': ['underInvestigation', 'Under Investigation'],
-            Resolved: ['resolved', 'Resolved']
+            Resolved: ['resolved', 'Resolved'],
+            Escalated: ['escalated', 'Escalated'],
+            'False Positive': ['falsePositive', 'False Positive']
         };
 
         const item = labels[value];
-        return item ? tr(item[0], item[1]) : value;
+
+        return item ? tr(item[0], item[1]) : value || '--';
     }
 
-    // Actualizar indicadores principales.
+    function formatNumber(value) {
+        return Number(value || 0).toLocaleString();
+    }
+
+    function getSeverityColor(severity) {
+        const colors = {
+            Critical: '#EF4444',
+            High: '#F97316',
+            Medium: '#EAB308',
+            Low: '#06B6D4'
+        };
+
+        return colors[severity] || '#94A3B8';
+    }
+
+    function showLoading() {
+        [
+            totalEvents,
+            activeAlerts,
+            openIncidents,
+            activeRules,
+            criticalIncidents,
+            highIncidents,
+            mediumIncidents,
+            totalOpenIncidents
+        ].forEach(element => {
+            if (element) element.innerText = '...';
+        });
+
+        if (recentAlerts) {
+            recentAlerts.innerHTML = `
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-4">
+                        ${tr('loading', 'Loading dashboard data...')}
+                    </td>
+                </tr>
+            `;
+        }
+
+        if (systemActivity) {
+            systemActivity.innerHTML = `
+                <div class="text-muted small py-3">
+                    ${tr('loading', 'Loading system activity...')}
+                </div>
+            `;
+        }
+    }
+
+    function showError(message) {
+        console.error('Dashboard error:', message);
+
+        if (recentAlerts) {
+            recentAlerts.innerHTML = `
+                <tr>
+                    <td colspan="5" class="text-center text-danger py-4">
+                        ${tr('dashboardLoadError', 'Unable to load dashboard data.')}
+                    </td>
+                </tr>
+            `;
+        }
+
+        if (systemActivity) {
+            systemActivity.innerHTML = `
+                <div class="text-danger small py-3">
+                    ${tr('dashboardLoadError', 'Unable to load dashboard data.')}
+                </div>
+            `;
+        }
+
+        [
+            totalEvents,
+            activeAlerts,
+            openIncidents,
+            activeRules,
+            criticalIncidents,
+            highIncidents,
+            mediumIncidents,
+            totalOpenIncidents
+        ].forEach(element => {
+            if (element) element.innerText = '--';
+        });
+    }
+
     function renderMetrics() {
-        if (totalEvents) totalEvents.innerText =
-            dashboardData.metrics.totalEvents.toLocaleString();
+        const metrics = dashboardData?.metrics || {};
 
-        if (activeAlerts) activeAlerts.innerText =
-            dashboardData.metrics.activeAlerts;
+        if (totalEvents) {
+            totalEvents.innerText = formatNumber(metrics.totalEvents);
+        }
 
-        if (openIncidents) openIncidents.innerText =
-            dashboardData.metrics.openIncidents;
+        if (activeAlerts) {
+            activeAlerts.innerText = formatNumber(metrics.activeAlerts);
+        }
 
-        if (activeRules) activeRules.innerText =
-            dashboardData.metrics.activeRules;
+        if (openIncidents) {
+            openIncidents.innerText = formatNumber(metrics.openIncidents);
+        }
+
+        if (activeRules) {
+            activeRules.innerText = formatNumber(metrics.activeRules);
+        }
     }
 
-    // Resumen de incidentes.
     function renderIncidentOverview() {
-        if (criticalIncidents) {
-            criticalIncidents.innerText = dashboardData.incidents.critical;
-        }
+        const incidents = dashboardData?.incidents || {};
 
-        if (highIncidents) {
-            highIncidents.innerText = dashboardData.incidents.high;
-        }
+        const critical = Number(incidents.critical || 0);
+        const high = Number(incidents.high || 0);
+        const medium = Number(incidents.medium || 0);
 
-        if (mediumIncidents) {
-            mediumIncidents.innerText = dashboardData.incidents.medium;
-        }
+        if (criticalIncidents) criticalIncidents.innerText = critical;
+        if (highIncidents) highIncidents.innerText = high;
+        if (mediumIncidents) mediumIncidents.innerText = medium;
 
         if (totalOpenIncidents) {
-            totalOpenIncidents.innerText =
-                dashboardData.incidents.critical +
-                dashboardData.incidents.high +
-                dashboardData.incidents.medium;
+            totalOpenIncidents.innerText = critical + high + medium;
         }
     }
 
-    // Gráfico de actividad de eventos.
     function renderEventChart(period = '24h') {
         if (!eventChart) return;
 
-        const values = dashboardData.events[period] ||
-            dashboardData.events['24h'];
+        const events = dashboardData?.events || {};
+        const values = events[period] || [];
 
-        const maxValue = Math.max(...values);
+        if (!values.length) {
+            eventChart.innerHTML = `
+                <div class="text-muted small text-center py-5">
+                    ${tr('noEventData', 'No event data available.')}
+                </div>
+            `;
+            return;
+        }
+
+        const maxValue = Math.max(...values, 1);
 
         eventChart.innerHTML = `
             <div class="d-flex flex-column h-100 justify-content-between">
@@ -198,6 +201,7 @@
                     <span class="text-muted small">
                         ${tr('eventVolume', 'Event Volume')}
                     </span>
+
                     <span class="badge bg-info bg-opacity-10 text-info">
                         ${tr('liveMonitoring', 'Live Monitoring')}
                     </span>
@@ -208,7 +212,7 @@
 
                     ${values.map((value, index) => {
                         const height = Math.max(
-                            (value / maxValue) * 100,
+                            (Number(value) / maxValue) * 100,
                             5
                         );
 
@@ -242,22 +246,30 @@
         `;
     }
 
-    // Distribución de severidad.
     function renderSeverityChart() {
         if (!severityChart) return;
 
-        const data = dashboardData.severity;
+        const data = dashboardData?.severity || {};
 
-        const total =
-            data.critical +
-            data.high +
-            data.medium +
-            data.low;
+        const critical = Number(data.critical || 0);
+        const high = Number(data.high || 0);
+        const medium = Number(data.medium || 0);
+        const low = Number(data.low || 0);
 
-        const critical = (data.critical / total) * 100;
-        const high = (data.high / total) * 100;
-        const medium = (data.medium / total) * 100;
-        const low = (data.low / total) * 100;
+        const total = critical + high + medium + low;
+
+        if (total === 0) {
+            severityChart.innerHTML = `
+                <div class="text-muted small text-center py-5">
+                    ${tr('noSeverityData', 'No severity data available.')}
+                </div>
+            `;
+            return;
+        }
+
+        const criticalPercent = (critical / total) * 100;
+        const highPercent = (high / total) * 100;
+        const mediumPercent = (medium / total) * 100;
 
         severityChart.innerHTML = `
             <div class="d-flex flex-column align-items-center justify-content-center h-100">
@@ -267,10 +279,10 @@
                         width: 150px;
                         height: 150px;
                         background: conic-gradient(
-                            #EF4444 0% ${critical}%,
-                            #F97316 ${critical}% ${critical + high}%,
-                            #EAB308 ${critical + high}% ${critical + high + medium}%,
-                            #06B6D4 ${critical + high + medium}% 100%
+                            #EF4444 0% ${criticalPercent}%,
+                            #F97316 ${criticalPercent}% ${criticalPercent + highPercent}%,
+                            #EAB308 ${criticalPercent + highPercent}% ${criticalPercent + highPercent + mediumPercent}%,
+                            #06B6D4 ${criticalPercent + highPercent + mediumPercent}% 100%
                         );
                      ">
 
@@ -282,108 +294,108 @@
                          ">
 
                         <span class="fs-4 fw-bold text-main">
-                            ${total}
+                            ${formatNumber(total)}
                         </span>
 
-                        <span class="text-muted"
-                              style="font-size: 10px;">
+                        <span class="text-muted" style="font-size: 10px;">
                             ${tr('totalAlerts', 'Total Alerts')}
                         </span>
-
                     </div>
                 </div>
 
                 <div class="d-flex flex-wrap justify-content-center gap-3 mt-4">
 
-                    <span class="small">
-                        <span class="badge rounded-circle me-1"
-                              style="background:#EF4444;">&nbsp;</span>
-                        ${translateSeverity('Critical')}
-                        ${data.critical}
-                    </span>
-
-                    <span class="small">
-                        <span class="badge rounded-circle me-1"
-                              style="background:#F97316;">&nbsp;</span>
-                        ${translateSeverity('High')}
-                        ${data.high}
-                    </span>
-
-                    <span class="small">
-                        <span class="badge rounded-circle me-1"
-                              style="background:#EAB308;">&nbsp;</span>
-                        ${translateSeverity('Medium')}
-                        ${data.medium}
-                    </span>
-
-                    <span class="small">
-                        <span class="badge rounded-circle me-1"
-                              style="background:#06B6D4;">&nbsp;</span>
-                        ${translateSeverity('Low')}
-                        ${data.low}
-                    </span>
+                    ${[
+                        ['Critical', critical, '#EF4444'],
+                        ['High', high, '#F97316'],
+                        ['Medium', medium, '#EAB308'],
+                        ['Low', low, '#06B6D4']
+                    ].map(([severity, count, color]) => `
+                        <span class="small">
+                            <span class="badge rounded-circle me-1"
+                                  style="background:${color};">&nbsp;</span>
+                            ${translateSeverity(severity)} ${count}
+                        </span>
+                    `).join('')}
 
                 </div>
             </div>
         `;
     }
 
-    // Alertas recientes.
     function renderRecentAlerts() {
         if (!recentAlerts) return;
 
+        const alerts = dashboardData?.alerts || [];
+
         recentAlerts.innerHTML = '';
 
-        dashboardData.alerts.forEach(alert => {
-            const color = {
-                Critical: '#EF4444',
-                High: '#F97316',
-                Medium: '#EAB308',
-                Low: '#06B6D4'
-            }[alert.severity] || '#94A3B8';
+        if (!alerts.length) {
+            recentAlerts.innerHTML = `
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-4">
+                        ${tr('noRecentAlerts', 'No recent alerts.')}
+                    </td>
+                </tr>
+            `;
+            return;
+        }
 
+        alerts.forEach(alert => {
+            const color = getSeverityColor(alert.severity);
             const row = document.createElement('tr');
 
-            row.innerHTML = `
-                <td class="font-monospace text-info">
-                    ${alert.id}
-                </td>
+            const cells = [
+                ['font-monospace text-info', alert.id],
+                ['', alert.description],
+                ['', translateSeverity(alert.severity)],
+                ['', translateStatus(alert.status)],
+                ['text-muted small', alert.time]
+            ];
 
-                <td>
-                    ${alert.description}
-                </td>
+            cells.forEach(([className, value], index) => {
+                const cell = document.createElement('td');
 
-                <td>
-                    <span class="badge"
-                          style="
-                            background: ${color}20;
-                            color: ${color};
-                            border: 1px solid ${color};
-                          ">
-                        ${translateSeverity(alert.severity)}
-                    </span>
-                </td>
+                if (className) cell.className = className;
 
-                <td>
-                    ${translateStatus(alert.status)}
-                </td>
+                if (index === 2) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge';
+                    badge.style.cssText = `
+                        background: ${color}20;
+                        color: ${color};
+                        border: 1px solid ${color};
+                    `;
+                    badge.textContent = value;
+                    cell.appendChild(badge);
+                } else {
+                    cell.textContent = value ?? '--';
+                }
 
-                <td class="text-muted small">
-                    ${alert.time}
-                </td>
-            `;
+                row.appendChild(cell);
+            });
 
             recentAlerts.appendChild(row);
         });
     }
 
-    // Actividad reciente del sistema.
     function renderSystemActivity() {
         if (!systemActivity) return;
 
+        const activity = dashboardData?.activity || [];
+
         systemActivity.innerHTML = '';
 
-        dashboardData.activity.forEach(item => {
+        if (!activity.length) {
+            systemActivity.innerHTML = `
+                <div class="text-muted small py-3">
+                    ${tr('noRecentActivity', 'No recent system activity.')}
+                </div>
+            `;
+            return;
+        }
+
+        activity.forEach(item => {
             const icon = {
                 success: 'bi-check-circle-fill text-success',
                 info: 'bi-info-circle-fill text-info',
@@ -397,46 +409,70 @@
 
             row.innerHTML = `
                 <div class="d-flex align-items-start gap-3">
-
                     <i class="bi ${icon} mt-1"></i>
 
                     <div>
-                        <div class="text-main small fw-semibold">
-                            ${item.action}
-                        </div>
-
-                        <div class="text-muted"
-                             style="font-size: 11px;">
-                            ${item.source}
-                        </div>
+                        <div class="text-main small fw-semibold activity-action"></div>
+                        <div class="text-muted activity-source"
+                             style="font-size: 11px;"></div>
                     </div>
-
                 </div>
 
                 <div class="text-end">
-                    <div class="text-muted"
-                         style="font-size: 11px;">
-                        ${item.time}
-                    </div>
+                    <div class="text-muted activity-time"
+                         style="font-size: 11px;"></div>
 
-                    <span class="small text-success">
-                        ${item.result}
-                    </span>
+                    <span class="small text-success activity-result"></span>
                 </div>
             `;
+
+            row.querySelector('.activity-action').textContent = item.action || '--';
+            row.querySelector('.activity-source').textContent = item.source || '--';
+            row.querySelector('.activity-time').textContent = item.time || '--';
+            row.querySelector('.activity-result').textContent = item.result || '--';
 
             systemActivity.appendChild(row);
         });
     }
 
-    // Cambiar periodo del gráfico.
+    function renderDashboard() {
+        if (!dashboardData) return;
+
+        renderMetrics();
+        renderIncidentOverview();
+        renderEventChart(periodSelect?.value || '24h');
+        renderSeverityChart();
+        renderRecentAlerts();
+        renderSystemActivity();
+    }
+
+    async function loadDashboard() {
+        showLoading();
+
+        try {
+            const response = await HttpClient.get(
+                ENDPOINTS.DASHBOARD.SUMMARY
+            );
+
+            if (!response || !response.data) {
+                throw new Error('Invalid dashboard response from backend.');
+            }
+
+            dashboardData = response.data;
+
+            renderDashboard();
+
+        } catch (error) {
+            showError(error.message);
+        }
+    }
+
     if (periodSelect) {
-        periodSelect.addEventListener('change', (event) => {
+        periodSelect.addEventListener('change', event => {
             renderEventChart(event.target.value);
         });
     }
 
-    // Navegación desde el dashboard.
     window.navigateDashboard = function(route) {
         const link = document.querySelector(
             `.nav-link[data-route="${route}"]`
@@ -445,17 +481,12 @@
         if (link) link.click();
     };
 
-    // Actualizar todos los componentes.
-    window.renderDashboard = function() {
-        renderMetrics();
-        renderIncidentOverview();
-        renderEventChart(periodSelect?.value || '24h');
-        renderSeverityChart();
-        renderRecentAlerts();
-        renderSystemActivity();
-    };
+    window.renderDashboard = renderDashboard;
+    window.loadDashboard = loadDashboard;
 
-    // Renderizado inicial.
-    window.renderDashboard();
+    document.addEventListener('nova:languageChanged', renderDashboard);
 
+
+    
+    loadDashboard();
 })();

@@ -1,31 +1,36 @@
 
-(function() {
+(function () {
     const tbody = document.getElementById('table-reports-body');
     const formGenerateReport = document.getElementById('generateReportForm');
     const typeSelect = document.getElementById('report-type-select');
+    const formatSelect = document.getElementById('report-format-select');
     const incidentContainer = document.getElementById('incident-id-container');
     const incidentInput = document.getElementById('report-incident-id');
     const btnSubmit = document.getElementById('btn-submit-report');
     const reportStatus = document.getElementById('reportStatus');
+
     const statTotal = document.getElementById('stat-total-reports');
     const statIncident = document.getElementById('stat-incident-reports');
     const statCompliance = document.getElementById('stat-compliance-reports');
 
-    let syntheticReports = [
-        { id: "REP-089", title: "Ransomware Execution Sequence Detected", type: "Incident Summary", date: "2026-11-07T18:00:00Z", author: "s.garcia", format: "PDF", color: "#EF4444" },
-        { id: "REP-088", title: "SOC Weekly Executive Brief", type: "Executive Brief", date: "2026-11-06T17:00:00Z", author: "System", format: "PDF", color: "#EAB308" },
-        { id: "REP-087", title: "Suspicious Lateral Movement via WMI", type: "Incident Summary", date: "2026-11-05T10:15:00Z", author: "m.rodriguez", format: "PDF", color: "#F97316" },
-        { id: "REP-086", title: "Monthly ISO 27001 Access Audit", type: "Compliance Audit", date: "2026-11-01T08:00:00Z", author: "System", format: "CSV", color: "#22C55E" }
-    ];
+    let generatedReports = [];
 
-    // Obtiene las traducciones del idioma activo.
     function translate(key, fallback) {
         return typeof window.t === 'function'
             ? window.t(key, fallback)
             : fallback;
     }
 
-    // Traduce los tipos sin modificar sus valores internos.
+    function escapeHTML(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        })[char]);
+    }
+
     function translateReportType(type) {
         const translations = {
             'Incident Summary': 'incidentSummary',
@@ -36,11 +41,16 @@
         return translate(translations[type], type);
     }
 
-    // Formatea la fecha según el idioma seleccionado.
     function formatReportDate(date) {
+        if (!date) return '--';
+
         const language = typeof window.getCurrentLanguage === 'function'
             ? window.getCurrentLanguage()
             : 'es';
+
+        const parsedDate = new Date(date);
+
+        if (Number.isNaN(parsedDate.getTime())) return '--';
 
         return new Intl.DateTimeFormat(
             language === 'en' ? 'en-US' : 'es-CO',
@@ -48,69 +58,114 @@
                 dateStyle: 'medium',
                 timeStyle: 'short'
             }
-        ).format(new Date(date));
+        ).format(parsedDate);
+    }
+
+    function showStatus(message, type = 'success') {
+        reportStatus.className = `alert alert-${type} mt-3`;
+        reportStatus.textContent = message;
+    }
+
+    function hideStatus() {
+        reportStatus.classList.add('d-none');
     }
 
     function calculateStats() {
-        let incidentCount = 0;
-        let complianceCount = 0;
+        const incidentCount = generatedReports.filter(
+            report => report.type === 'Incident Summary'
+        ).length;
 
-        syntheticReports.forEach(report => {
-            if (report.type === "Incident Summary") {
-                incidentCount++;
-            }
+        const executiveCount = generatedReports.filter(
+            report => report.type === 'Executive Brief'
+        ).length;
 
-            if (
-                report.type === "Compliance Audit" ||
-                report.type === "Executive Brief"
-            ) {
-                complianceCount++;
-            }
-        });
-
-        statTotal.innerText = syntheticReports.length;
-        statIncident.innerText = incidentCount;
-        statCompliance.innerText = complianceCount;
+        statTotal.textContent = generatedReports.length;
+        statIncident.textContent = incidentCount;
+        statCompliance.textContent = executiveCount;
     }
 
     function renderReportsTable() {
+        const searchInput = document.getElementById('search-reports');
+        const typeFilter = document.getElementById('filter-report-type');
+        const dateFilter = document.getElementById('filter-report-date');
+
+        const search = searchInput?.value.toLowerCase().trim() || '';
+        const selectedType = typeFilter?.value || '';
+        const selectedDate = dateFilter?.value || '';
+
+        const filteredReports = generatedReports.filter(report => {
+            const matchesSearch =
+                report.reportId.toLowerCase().includes(search) ||
+                report.title.toLowerCase().includes(search);
+
+            const matchesType =
+                !selectedType || report.type === selectedType;
+
+            const reportDate = report.generatedAt
+                ? new Date(report.generatedAt).toISOString().split('T')[0]
+                : '';
+
+            const matchesDate =
+                !selectedDate || reportDate === selectedDate;
+
+            return matchesSearch && matchesType && matchesDate;
+        });
+
         tbody.innerHTML = '';
 
-        syntheticReports.forEach(rep => {
+        if (filteredReports.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">
+                        ${translate(
+                            'noReportsAvailable',
+                            'No reports generated in this session.'
+                        )}
+                    </td>
+                </tr>
+            `;
+
+            calculateStats();
+            return;
+        }
+
+        filteredReports.forEach(report => {
             const tr = document.createElement('tr');
 
-            let icon = 'bi-file-earmark-pdf';
+            const formatIcons = {
+                PDF: 'bi-file-earmark-pdf',
+                CSV: 'bi-file-earmark-spreadsheet',
+                JSON: 'bi-file-earmark-code'
+            };
 
-            if (rep.format === 'CSV') {
-                icon = 'bi-file-earmark-spreadsheet';
-            }
+            const icon = formatIcons[report.format] || 'bi-file-earmark';
 
-            if (rep.format === 'JSON') {
-                icon = 'bi-file-earmark-code';
-            }
+            const color = report.type === 'Incident Summary'
+                ? '#EF4444'
+                : '#EAB308';
 
-            const authorHTML = rep.author === 'System'
+            const authorHTML = report.author === 'System'
                 ? `<i class="bi bi-robot me-1"></i>${translate('system', 'System')}`
-                : `<i class="bi bi-person-fill me-1"></i>${rep.author}`;
+                : `<i class="bi bi-person-fill me-1"></i>${escapeHTML(report.author)}`;
 
             tr.innerHTML = `
                 <td style="font-family: monospace; color: var(--primary); font-weight: 600;">
-                    ${rep.id}
+                    ${escapeHTML(report.reportId)}
                 </td>
 
                 <td style="font-weight: 500; color: #F8FAFC;">
-                    ${rep.title}
+                    ${escapeHTML(report.title)}
                 </td>
 
                 <td>
                     <span class="badge"
-                          style="background-color: ${rep.color}20; color: ${rep.color}; border: 1px solid ${rep.color};">
-                        ${translateReportType(rep.type)}
+                          style="background-color: ${color}20; color: ${color}; border: 1px solid ${color};">
+                        ${escapeHTML(translateReportType(report.type))}
                     </span>
                 </td>
 
                 <td style="color: var(--text-muted); font-size: 0.85rem;">
-                    ${formatReportDate(rep.date)}
+                    ${escapeHTML(formatReportDate(report.generatedAt))}
                 </td>
 
                 <td style="color: var(--text-muted); font-size: 0.9rem;">
@@ -118,12 +173,11 @@
                 </td>
 
                 <td class="text-center">
-                    <button class="btn btn-sm btn-outline-info py-0 px-2"
-                            onclick="downloadReport('${rep.id}')"
-                            title="${translate('download', 'Download')}"
-                            aria-label="${translate('download', 'Download')} ${rep.id}">
+                    <span class="text-muted"
+                          title="${translate('downloadUnavailable', 'Download not implemented yet')}">
                         <i class="bi ${icon}"></i>
-                    </button>
+                        <small>--</small>
+                    </span>
                 </td>
             `;
 
@@ -133,97 +187,139 @@
         calculateStats();
     }
 
-    typeSelect.addEventListener('change', (e) => {
-        if (e.target.value === 'Incident Summary') {
-            incidentContainer.classList.remove('d-none');
-            incidentInput.required = true;
-        } else {
-            incidentContainer.classList.add('d-none');
-            incidentInput.required = false;
+    function updateIncidentField() {
+        const isIncidentSummary = typeSelect.value === 'Incident Summary';
+
+        incidentContainer.classList.toggle('d-none', !isIncidentSummary);
+        incidentInput.required = isIncidentSummary;
+
+        if (!isIncidentSummary) {
             incidentInput.value = '';
         }
-    });
+    }
 
-    formGenerateReport.addEventListener('submit', (e) => {
-        e.preventDefault();
+    async function generateReport(event) {
+        event.preventDefault();
+
+        const type = typeSelect.value;
+        const format = formatSelect.value;
+        const incidentId = incidentInput.value.trim();
+
+        if (
+            type !== 'Incident Summary' &&
+            type !== 'Executive Brief'
+        ) {
+            showStatus(
+                translate(
+                    'reportTypeUnavailable',
+                    'This report type is not supported by the backend yet.'
+                ),
+                'warning'
+            );
+            return;
+        }
+
+        if (type === 'Incident Summary' && !incidentId) {
+            incidentInput.focus();
+            return;
+        }
+
+        const payload = {
+            type,
+            format
+        };
+
+        if (type === 'Incident Summary') {
+            payload.incidentId = incidentId;
+        }
 
         btnSubmit.disabled = true;
         btnSubmit.innerHTML = `
-            <span class="spinner-border spinner-border-sm"
+            <span class="spinner-border spinner-border-sm me-2"
                   role="status"
                   aria-hidden="true"></span>
-            ${translate('compiling', 'Compiling...')}
+            ${translate('compiling', 'Generating...')}
         `;
 
-        reportStatus.classList.add('d-none');
-        reportStatus.className = 'alert mt-3';
+        hideStatus();
 
-        setTimeout(() => {
-            const type = typeSelect.value;
+        try {
+            const response = await HttpClient.post(
+                ENDPOINTS.REPORTS.GENERATE,
+                payload
+            );
 
-            const title = type === 'Incident Summary'
-                ? `Incident Report: ${incidentInput.value}`
-                : `${type} - ${new Date().toISOString().split('T')[0]}`;
+            const report = response?.data;
 
-            const color = type === 'Incident Summary'
-                ? '#EF4444'
-                : (type === 'Compliance Audit' ? '#22C55E' : '#EAB308');
+            if (!report || !report.reportId) {
+                throw new Error(
+                    translate(
+                        'invalidReportResponse',
+                        'The server returned an invalid report response.'
+                    )
+                );
+            }
 
-            const newReport = {
-                id: "REP-0" + (90 + syntheticReports.length),
-                title: title,
-                type: type,
-                date: new Date().toISOString(),
-                author: "s.garcia",
-                format: document.getElementById('report-format-select').value,
-                color: color
-            };
+            generatedReports.unshift({
+                reportId: report.reportId,
+                title: report.title || 'Untitled Report',
+                type: report.type || type,
+                format: report.format || format,
+                author: report.author || 'System',
+                generatedAt: report.generatedAt || new Date().toISOString(),
+                data: report.incidentDetails || null
+            });
 
-            syntheticReports.unshift(newReport);
             renderReportsTable();
 
-            reportStatus.classList.add('alert-success');
-            reportStatus.style.backgroundColor = 'rgba(34, 197, 94, 0.1)';
-            reportStatus.style.borderColor = '#22C55E';
-            reportStatus.style.color = '#22C55E';
+            showStatus(
+                `${translate('success', 'Success')}: ${translate('report', 'Report')} ${report.reportId} ${translate('reportGenerated', 'generated successfully.')}`,
+                'success'
+            );
 
-            reportStatus.textContent =
-                `${translate('success', 'Success')}: ` +
-                `${translate('report', 'Report')} ${newReport.id} ` +
-                `${translate('generatedReady', 'generated and ready for download.')}`;
+            formGenerateReport.reset();
+            updateIncidentField();
 
-            reportStatus.classList.remove('d-none');
+            const modalElement = document.getElementById('generateReportModal');
+            const modal = bootstrap.Modal.getInstance(modalElement);
 
+            if (modal) {
+                modal.hide();
+            }
+
+        } catch (error) {
+            console.error('Report generation failed:', error);
+
+            showStatus(
+                error.message || translate(
+                    'reportGenerationError',
+                    'Could not generate the report. Please try again.'
+                ),
+                'danger'
+            );
+
+        } finally {
             btnSubmit.disabled = false;
             btnSubmit.textContent = translate(
                 'compileGenerate',
                 'Compile & Generate'
             );
+        }
+    }
 
-            setTimeout(() => {
-                const modalEl = document.getElementById('generateReportModal');
-                const modal = bootstrap.Modal.getInstance(modalEl);
+    typeSelect.addEventListener('change', updateIncidentField);
 
-                if (modal) {
-                    modal.hide();
-                }
+    formGenerateReport.addEventListener('submit', generateReport);
 
-                formGenerateReport.reset();
-                reportStatus.classList.add('d-none');
+    document.getElementById('search-reports')
+        ?.addEventListener('input', renderReportsTable);
 
-                incidentContainer.classList.remove('d-none');
-                incidentInput.required = true;
+    document.getElementById('filter-report-type')
+        ?.addEventListener('change', renderReportsTable);
 
-            }, 1500);
+    document.getElementById('filter-report-date')
+        ?.addEventListener('change', renderReportsTable);
 
-        }, 1200);
-    });
-
-    window.downloadReport = function(id) {
-        console.log("Downloading report:", id);
-    };
-
-    // Actualiza la tabla cuando cambia el idioma.
     document.addEventListener('nova:languageChanged', () => {
         renderReportsTable();
 
@@ -235,5 +331,6 @@
         }
     });
 
+    updateIncidentField();
     renderReportsTable();
 })();

@@ -1,48 +1,116 @@
+
 const HttpClient = {
-    
-    getCsrfToken: () => {
-        const match = document.cookie.match(new RegExp('(^| )XSRF-TOKEN=([^;]+)'));
-        return match ? match[2] : null;
-    },
 
     request: async (url, options = {}) => {
+
         const headers = new Headers(options.headers || {});
-        
-        const csrfToken = HttpClient.getCsrfToken();
-        if (csrfToken && options.method && options.method !== 'GET') {
-            headers.append('X-XSRF-TOKEN', csrfToken);
+
+        const token = sessionStorage.getItem('nova_token');
+
+        if (token) {
+            headers.set('Authorization', `Bearer ${token}`);
         }
 
-        if (!(options.body instanceof FormData) && options.body && typeof options.body === 'object') {
-            headers.append('Content-Type', 'application/json');
-            options.body = JSON.stringify(options.body);
+        let body = options.body;
+
+        if (
+            body &&
+            typeof body === 'object' &&
+            !(body instanceof FormData)
+        ) {
+            headers.set('Content-Type', 'application/json');
+            body = JSON.stringify(body);
         }
 
-        options.credentials = 'include';
-        options.headers = headers;
+        if (body instanceof FormData) {
+            headers.delete('Content-Type');
+        }
 
         try {
-            const response = await fetch(url, options);
-            
-            if (response.status === 401 || response.status === 403) {
-                window.location.href = 'index.html';
-                throw new Error('Unauthorized');
+
+            const response = await fetch(url, {
+                ...options,
+                headers,
+                body
+            });
+
+            const responseText = await response.text();
+
+            let responseData = null;
+
+            if (responseText) {
+                try {
+                    responseData = JSON.parse(responseText);
+                } catch {
+                    responseData = responseText;
+                }
             }
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || `HTTP Error: ${response.status}`);
+
+                const message =
+                    responseData?.message ||
+                    responseData?.error ||
+                    `HTTP Error: ${response.status}`;
+
+                const error = new Error(message);
+
+                error.status = response.status;
+                error.data = responseData;
+
+                if (response.status === 401) {
+                    error.message = 'Unauthorized. Please authenticate again.';
+                }
+
+                throw error;
             }
 
-            return await response.json();
+            return responseData;
+
         } catch (error) {
-            console.error('API Request Failed:', error);
+
+            console.error('API Request Failed:', {
+                url,
+                message: error.message,
+                status: error.status || null
+            });
+
             throw error;
         }
     },
 
-    get: (url, options) => HttpClient.request(url, { ...options, method: 'GET' }),
-    post: (url, body, options) => HttpClient.request(url, { ...options, method: 'POST', body }),
-    put: (url, body, options) => HttpClient.request(url, { ...options, method: 'PUT', body }),
-    delete: (url, options) => HttpClient.request(url, { ...options, method: 'DELETE' })
+    get: (url, options = {}) =>
+        HttpClient.request(url, {
+            ...options,
+            method: 'GET'
+        }),
+
+    post: (url, body, options = {}) =>
+        HttpClient.request(url, {
+            ...options,
+            method: 'POST',
+            body
+        }),
+
+    put: (url, body, options = {}) =>
+        HttpClient.request(url, {
+            ...options,
+            method: 'PUT',
+            body
+        }),
+
+    patch: (url, body, options = {}) =>
+        HttpClient.request(url, {
+            ...options,
+            method: 'PATCH',
+            body
+        }),
+
+    delete: (url, options = {}) =>
+        HttpClient.request(url, {
+            ...options,
+            method: 'DELETE'
+        })
 };
+
+window.HttpClient = HttpClient;

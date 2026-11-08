@@ -1,3 +1,4 @@
+
 <div class="container-fluid p-0">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="h4 mb-0 text-main">Detection Engine (Rules Lab)</h2>
@@ -13,12 +14,14 @@
                 <div class="fs-3 fw-bold text-success mt-1" id="stat-active-rules">0</div>
             </div>
         </div>
+
         <div class="col-md-3">
             <div class="card bg-surface border-panel h-100 p-3 rounded-3">
                 <div class="text-muted small text-uppercase fw-semibold">Disabled Rules</div>
                 <div class="fs-3 fw-bold text-secondary mt-1" id="stat-disabled-rules">0</div>
             </div>
         </div>
+
         <div class="col-md-6">
             <div class="card bg-surface border-panel h-100 p-3 rounded-3">
                 <div class="text-muted small text-uppercase fw-semibold">Engine Status</div>
@@ -34,10 +37,17 @@
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-4">
-                    <input type="text" class="form-control bg-main border-panel text-main" placeholder="Search by rule name or MITRE technique..." id="search-rules">
+                    <input
+                        type="text"
+                        class="form-control bg-main border-panel text-main"
+                        placeholder="Search by rule name or MITRE technique..."
+                        id="search-rules">
                 </div>
+
                 <div class="col-md-3">
-                    <select class="form-select bg-main border-panel text-main" id="filter-rule-status">
+                    <select
+                        class="form-select bg-main border-panel text-main"
+                        id="filter-rule-status">
                         <option value="">All States</option>
                         <option value="Active">Active</option>
                         <option value="Disabled">Disabled</option>
@@ -57,12 +67,12 @@
                         <th>Category</th>
                         <th>MITRE ATT&CK</th>
                         <th>Severity</th>
-                        <th class="text-center">Hits (24h)</th>
+                        <th class="text-center">Hits (Total)</th>
                         <th class="text-center">Actions</th>
                     </tr>
                 </thead>
-                <tbody id="table-rules-body">
-                </tbody>
+
+                <tbody id="table-rules-body"></tbody>
             </table>
         </div>
     </div>
@@ -71,45 +81,132 @@
 <div class="modal fade" id="createRuleModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content bg-surface border-panel text-main">
+
             <div class="modal-header border-panel">
-                <h5 class="modal-title fw-bold text-primary-nova">Author Detection Rule (Sigma Format)</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title fw-bold text-primary-nova">
+                    Author Detection Rule (Sigma Format)
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close btn-close-white"
+                    data-bs-dismiss="modal"
+                    aria-label="Close">
+                </button>
             </div>
+
             <div class="modal-body">
                 <form id="createRuleForm">
+
                     <div class="row mb-3">
                         <div class="col-md-8">
-                            <label class="form-label text-muted">Rule Title</label>
-                            <input type="text" class="form-control bg-main border-panel text-main" required placeholder="e.g., Suspicious Scheduled Task Creation">
+                            <label class="form-label text-muted" for="ruleName">
+                                Rule Title
+                            </label>
+
+                            <input
+                                type="text"
+                                id="ruleName"
+                                class="form-control bg-main border-panel text-main"
+                                required
+                                maxlength="255"
+                                placeholder="e.g., Suspicious Scheduled Task Creation">
                         </div>
+
                         <div class="col-md-4">
-                            <label class="form-label text-muted">Severity</label>
-                            <select class="form-select bg-main border-panel text-main" required>
-                                <option value="Critical">Critical</option>
-                                <option value="High">High</option>
-                                <option value="Medium" selected>Medium</option>
-                                <option value="Low">Low</option>
+                            <label class="form-label text-muted" for="ruleSeverity">
+                                Severity
+                            </label>
+
+                            <select
+                                id="ruleSeverity"
+                                class="form-select bg-main border-panel text-main"
+                                required>
+                                <option value="CRITICAL">Critical</option>
+                                <option value="HIGH">High</option>
+                                <option value="MEDIUM" selected>Medium</option>
+                                <option value="LOW">Low</option>
                             </select>
                         </div>
                     </div>
-                    
+
                     <div class="mb-3">
-                        <label class="form-label text-muted">MITRE ATT&CK Technique ID</label>
-                        <input type="text" class="form-control bg-main border-panel text-main" placeholder="e.g., T1053">
+                        <label class="form-label text-muted" for="ruleCategory">
+                            Rule Category
+                        </label>
+
+                        <select
+                            id="ruleCategory"
+                            class="form-select bg-main border-panel text-main"
+                            required>
+                            <option value="CUSTOM" selected>Custom</option>
+                            <option value="INITIAL_ACCESS">Initial Access</option>
+                            <option value="EXECUTION">Execution</option>
+                            <option value="PERSISTENCE">Persistence</option>
+                            <option value="PRIVILEGE_ESCALATION">Privilege Escalation</option>
+                            <option value="DEFENSE_EVASION">Defense Evasion</option>
+                            <option value="CREDENTIAL_ACCESS">Credential Access</option>
+                            <option value="DISCOVERY">Discovery</option>
+                            <option value="LATERAL_MOVEMENT">Lateral Movement</option>
+                            <option value="COLLECTION">Collection</option>
+                            <option value="COMMAND_AND_CONTROL">Command and Control</option>
+                            <option value="EXFILTRATION">Exfiltration</option>
+                            <option value="IMPACT">Impact</option>
+                        </select>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label text-muted">Detection Logic (YAML/Sigma)</label>
-                        <textarea class="form-control bg-main border-panel text-main" rows="8" style="font-family: monospace; font-size: 0.9rem;" required placeholder="logsource:&#10;    category: process_creation&#10;    product: windows&#10;detection:&#10;    selection:&#10;        CommandLine|contains: 'schtasks /create'&#10;    condition: selection"></textarea>
+                        <label class="form-label text-muted" for="ruleMitre">
+                            MITRE ATT&CK Technique ID
+                        </label>
+
+                        <input
+                            type="text"
+                            id="ruleMitre"
+                            class="form-control bg-main border-panel text-main"
+                            placeholder="e.g., T1053">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-muted" for="ruleSigma">
+                            Detection Logic (YAML/Sigma)
+                        </label>
+
+                        <textarea
+                            id="ruleSigma"
+                            class="form-control bg-main border-panel text-main"
+                            rows="8"
+                            style="font-family: monospace; font-size: 0.9rem;"
+                            required
+                            placeholder="logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        CommandLine|contains: 'schtasks /create'
+    condition: selection"></textarea>
                     </div>
 
                     <div class="d-flex justify-content-between align-items-center mt-4">
                         <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="ruleActiveSwitch" checked>
-                            <label class="form-check-label text-muted" for="ruleActiveSwitch">Enable immediately</label>
+                            <input
+                                class="form-check-input"
+                                type="checkbox"
+                                id="ruleActiveSwitch"
+                                checked>
+
+                            <label
+                                class="form-check-label text-muted"
+                                for="ruleActiveSwitch">
+                                Enable immediately
+                            </label>
                         </div>
-                        <button type="submit" class="btn btn-primary fw-bold">Deploy to Engine</button>
+
+                        <button type="submit" class="btn btn-primary fw-bold">
+                            Deploy to Engine
+                        </button>
                     </div>
+
                 </form>
             </div>
         </div>

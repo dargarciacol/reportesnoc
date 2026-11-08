@@ -1,100 +1,329 @@
 
-document.addEventListener('DOMContentLoaded', () => {
-    const contentArea = document.getElementById('nova-content');
-    const navLinks = document.querySelectorAll('.nav-link');
-    const breadcrumb = document.getElementById('breadcrumb');
+(function () {
+    'use strict';
 
-    // Aplica el idioma seleccionado al contenido actual.
-    function applyCurrentLanguage() {
-        if (typeof translatePage === 'function') {
-            const language = typeof getCurrentLanguage === 'function'
-                ? getCurrentLanguage()
-                : 'es';
+    document.addEventListener('DOMContentLoaded', initializeRouter, {
+        once: true
+    });
 
-            translatePage(language);
+    function initializeRouter() {
+
+        const contentArea = document.getElementById('nova-content');
+        const breadcrumb = document.getElementById('breadcrumb');
+
+        if (!contentArea || !breadcrumb) {
+            console.error('NOVA SIEM: Router elements not found.');
+            return;
         }
-    }
 
-    // Carga los módulos del sistema.
-    async function loadModule(route) {
-        try {
-            const response = await fetch(`pages/${route}.html`);
+        let currentModuleScript = null;
+        let navigationCounter = 0;
 
-            if (!response.ok) {
-                throw new Error(`Module not found: ${route}`);
+        // ==========================================
+        // ROUTES
+        // ==========================================
+
+        function validateRoute(route) {
+
+            if (!route || !/^[a-zA-Z0-9_-]+$/.test(route)) {
+                return 'dashboard';
             }
 
-            const html = await response.text();
+            return route.toLowerCase();
+        }
 
-            // Inserta el contenido HTML.
-            contentArea.innerHTML = html;
+        function getRouteFromURL() {
 
-            // Actualiza el breadcrumb con una clave traducible.
-            const routeLabel = route.charAt(0).toUpperCase() + route.slice(1);
+            const params = new URLSearchParams(window.location.search);
+
+            return validateRoute(params.get('page'));
+        }
+
+        // ==========================================
+        // NAVIGATION UI
+        // ==========================================
+
+        function updateActiveLink(route) {
+
+            document.querySelectorAll('.nav-link[data-route]')
+                .forEach(link => {
+
+                    link.classList.toggle(
+                        'active',
+                        link.dataset.route === route
+                    );
+                });
+        }
+
+        function updateBreadcrumb(route) {
+
+            const label = route
+                .replace(/[-_]/g, ' ')
+                .replace(/\b\w/g, char => char.toUpperCase());
 
             breadcrumb.innerHTML = `
                 NOVA SIEM /
-                <span data-i18n="${route}" style="color: var(--text-main);">
-                    ${routeLabel}
+                <span style="color: var(--text-main);">
+                    ${label}
                 </span>
             `;
+        }
 
-            // Aplica las traducciones al módulo recién cargado.
-            applyCurrentLanguage();
+        function translateCurrentPage() {
 
-            // Elimina el script del módulo anterior.
-            const existingScript = document.getElementById('dynamic-module-script');
+            if (typeof window.translatePage === 'function') {
+                window.translatePage();
+            }
+        }
 
-            if (existingScript) {
-                existingScript.remove();
+        // ==========================================
+        // LOADING
+        // ==========================================
+
+        function showLoading() {
+
+            const message = typeof window.t === 'function'
+                ? window.t('loading', 'Loading module...')
+                : 'Loading module...';
+
+            contentArea.innerHTML = `
+                <div class="d-flex justify-content-center align-items-center p-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <span class="ms-3 text-muted">${message}</span>
+                </div>
+            `;
+        }
+
+        // ==========================================
+        // MODULE CLEANUP
+        // ==========================================
+
+        function cleanupCurrentModule() {
+
+            if (typeof window.destroyCurrentModule === 'function') {
+
+                try {
+                    window.destroyCurrentModule();
+                } catch (error) {
+                    console.error('Module cleanup error:', error);
+                }
             }
 
-            // Carga el JavaScript correspondiente al módulo.
-            const script = document.createElement('script');
+            window.destroyCurrentModule = null;
 
-            script.src = `js/modules/${route}.js`;
-            script.id = 'dynamic-module-script';
-            script.async = false;
+            if (currentModuleScript) {
+                currentModuleScript.remove();
+                currentModuleScript = null;
+            }
+        }
 
-            await new Promise((resolve, reject) => {
-                script.onload = resolve;
-                script.onerror = () => reject(
-                    new Error(`Error loading script: ${route}.js`)
+        // ==========================================
+        // LOAD HTML
+        // ==========================================
+
+        async function loadHTML(route) {
+
+            const response = await fetch(`pages/${route}.html`);
+
+            if (!response.ok) {
+                throw new Error(
+                    `Page not found: pages/${route}.html (${response.status})`
                 );
+            }
+
+            return await response.text();
+        }
+
+        // ==========================================
+        // LOAD JAVASCRIPT MODULE
+        // ==========================================
+
+        function loadModuleScript(route) {
+
+            return new Promise((resolve, reject) => {
+
+                const script = document.createElement('script');
+
+                script.src = `js/modules/${route}.js`;
+                script.id = 'dynamic-module-script';
+                script.async = false;
+
+                currentModuleScript = script;
+
+                script.onload = () => resolve();
+
+                script.onerror = () => {
+
+                    script.remove();
+
+                    if (currentModuleScript === script) {
+                        currentModuleScript = null;
+                    }
+
+                    reject(
+                        new Error(
+                            `JavaScript module not found: js/modules/${route}.js`
+                        )
+                    );
+                };
 
                 document.body.appendChild(script);
             });
+        }
 
-        } catch (error) {
-            console.error('Router error:', error);
+        // ==========================================
+        // ERROR HANDLER
+        // ==========================================
+
+        function showError(route, error) {
+
+            console.error(`NOVA SIEM Router: ${route}`, error);
 
             contentArea.innerHTML = `
                 <div class="alert alert-danger bg-dark text-danger border-danger">
-                    Error loading module: ${route}
+                    <h5>
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Error loading module
+                    </h5>
+
+                    <p>
+                        Unable to load:
+                        <strong>${route}</strong>
+                    </p>
+
+                    <small>${error.message}</small>
+
+                    <div class="mt-3">
+                        <button id="retry-module"
+                                class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-arrow-clockwise me-1"></i>
+                            Retry
+                        </button>
+                    </div>
                 </div>
             `;
 
-            applyCurrentLanguage();
+            document.getElementById('retry-module')
+                ?.addEventListener('click', () => loadModule(route));
         }
-    }
 
-    // Navegación entre módulos.
-    navLinks.forEach(link => {
-        link.addEventListener('click', (event) => {
+        // ==========================================
+        // MAIN MODULE LOADER
+        // ==========================================
+
+        async function loadModule(route, updateURL = true) {
+
+            route = validateRoute(route);
+
+            const navigationId = ++navigationCounter;
+
+            cleanupCurrentModule();
+            showLoading();
+
+            try {
+
+                // 1. Load HTML
+                const html = await loadHTML(route);
+
+                if (navigationId !== navigationCounter) {
+                    return;
+                }
+
+                // 2. Insert HTML
+                contentArea.innerHTML = html;
+
+                // 3. Update interface
+                updateBreadcrumb(route);
+                updateActiveLink(route);
+
+                // 4. Update browser URL
+                if (updateURL) {
+
+                    const url = new URL(window.location.href);
+
+                    url.searchParams.set('page', route);
+
+                    window.history.pushState(
+                        { page: route },
+                        '',
+                        url
+                    );
+                }
+
+                // 5. Apply translations
+                translateCurrentPage();
+
+                // 6. Load page JavaScript
+                await loadModuleScript(route);
+
+                if (navigationId !== navigationCounter) {
+                    return;
+                }
+
+                console.info(
+                    `NOVA SIEM: ${route} loaded successfully.`
+                );
+
+            } catch (error) {
+
+                if (navigationId !== navigationCounter) {
+                    return;
+                }
+
+                cleanupCurrentModule();
+                showError(route, error);
+            }
+        }
+
+        // ==========================================
+        // SIDEBAR NAVIGATION
+        // ==========================================
+
+        document.addEventListener('click', event => {
+
+            const link = event.target.closest(
+                '.nav-link[data-route]'
+            );
+
+            if (!link) {
+                return;
+            }
+
             event.preventDefault();
 
-            navLinks.forEach(navLink => {
-                navLink.classList.remove('active');
-            });
-
-            event.currentTarget.classList.add('active');
-
-            const route = event.currentTarget.getAttribute('data-route');
-
-            loadModule(route);
+            loadModule(link.dataset.route);
         });
-    });
 
-    // Módulo inicial.
-    loadModule('dashboard');
-});
+        // ==========================================
+        // BROWSER BACK / FORWARD
+        // ==========================================
+
+        window.addEventListener('popstate', () => {
+
+            loadModule(getRouteFromURL(), false);
+        });
+
+        // ==========================================
+        // GLOBAL API
+        // ==========================================
+
+        window.NOVA = window.NOVA || {};
+
+        window.NOVA.navigate = route => {
+            loadModule(route);
+        };
+
+        window.NOVA.reload = () => {
+            loadModule(getRouteFromURL(), false);
+        };
+
+        window.NOVA.getCurrentPage = getRouteFromURL;
+
+        // ==========================================
+        // INITIAL PAGE
+        // ==========================================
+
+        loadModule(getRouteFromURL(), false);
+    }
+
+})();

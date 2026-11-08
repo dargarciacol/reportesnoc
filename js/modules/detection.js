@@ -1,9 +1,37 @@
 
-(function() {
+(function () {
     const tbody = document.getElementById('table-rules-body');
     const statActive = document.getElementById('stat-active-rules');
     const statDisabled = document.getElementById('stat-disabled-rules');
     const formCreateRule = document.getElementById('createRuleForm');
+    const searchInput = document.getElementById('search-rules');
+    const statusFilter = document.getElementById('filter-rule-status');
+
+    let rules = [];
+    let isLoading = false;
+
+    const severityColors = {
+        CRITICAL: '#EF4444',
+        HIGH: '#F97316',
+        MEDIUM: '#EAB308',
+        LOW: '#06B6D4'
+    };
+
+    const categoryLabels = {
+        INITIAL_ACCESS: 'Initial Access',
+        EXECUTION: 'Execution',
+        PERSISTENCE: 'Persistence',
+        PRIVILEGE_ESCALATION: 'Privilege Escalation',
+        DEFENSE_EVASION: 'Defense Evasion',
+        CREDENTIAL_ACCESS: 'Credential Access',
+        DISCOVERY: 'Discovery',
+        LATERAL_MOVEMENT: 'Lateral Movement',
+        COLLECTION: 'Collection',
+        COMMAND_AND_CONTROL: 'Command and Control',
+        EXFILTRATION: 'Exfiltration',
+        IMPACT: 'Impact',
+        CUSTOM: 'Custom'
+    };
 
     function t(key, fallback) {
         return typeof window.t === 'function'
@@ -11,113 +39,113 @@
             : fallback;
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, character => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[character]);
+    }
+
+    function normalizeSeverity(severity) {
+        return String(severity || '').toUpperCase();
+    }
+
     function translateSeverity(severity) {
+        const value = normalizeSeverity(severity);
         const keys = {
-            Critical: 'critical',
-            High: 'high',
-            Medium: 'medium',
-            Low: 'low'
+            CRITICAL: 'critical',
+            HIGH: 'high',
+            MEDIUM: 'medium',
+            LOW: 'low'
         };
 
-        return t(keys[severity], severity);
+        return t(keys[value], value);
     }
 
     function translateCategory(category) {
+        const value = String(category || '').toUpperCase();
         const keys = {
-            Authentication: 'authentication',
-            Execution: 'execution',
-            'Initial Access': 'initialAccess',
-            Impact: 'impact',
-            Reconnaissance: 'reconnaissance',
-            Custom: 'custom'
+            INITIAL_ACCESS: 'initialAccess',
+            EXECUTION: 'execution',
+            PERSISTENCE: 'persistence',
+            PRIVILEGE_ESCALATION: 'privilegeEscalation',
+            DEFENSE_EVASION: 'defenseEvasion',
+            CREDENTIAL_ACCESS: 'credentialAccess',
+            DISCOVERY: 'discovery',
+            LATERAL_MOVEMENT: 'lateralMovement',
+            COLLECTION: 'collection',
+            COMMAND_AND_CONTROL: 'commandAndControl',
+            EXFILTRATION: 'exfiltration',
+            IMPACT: 'impact',
+            CUSTOM: 'custom'
         };
 
-        return t(keys[category], category);
+        return t(keys[value], categoryLabels[value] || value);
     }
 
-    let syntheticRules = [
-        {
-            id: "R-001",
-            name: "Multiple Failed Logins",
-            category: "Authentication",
-            mitre: "T1110",
-            severity: "High",
-            color: "#F97316",
-            hits: 45,
-            active: true
-        },
-        {
-            id: "R-002",
-            name: "Suspicious PowerShell Execution",
-            category: "Execution",
-            mitre: "T1059.001",
-            severity: "Critical",
-            color: "#EF4444",
-            hits: 2,
-            active: true
-        },
-        {
-            id: "R-003",
-            name: "Login from Unusual Location",
-            category: "Initial Access",
-            mitre: "T1078",
-            severity: "Medium",
-            color: "#EAB308",
-            hits: 12,
-            active: true
-        },
-        {
-            id: "R-004",
-            name: "Ransomware Extension Detected",
-            category: "Impact",
-            mitre: "T1486",
-            severity: "Critical",
-            color: "#EF4444",
-            hits: 0,
-            active: true
-        },
-        {
-            id: "R-005",
-            name: "Impossible Travel",
-            category: "Authentication",
-            mitre: "T1078",
-            severity: "Medium",
-            color: "#EAB308",
-            hits: 3,
-            active: true
-        },
-        {
-            id: "R-006",
-            name: "Port Scan Activity",
-            category: "Reconnaissance",
-            mitre: "T1046",
-            severity: "Low",
-            color: "#06B6D4",
-            hits: 156,
-            active: false
-        }
-    ];
+    function showTableMessage(message) {
+        if (!tbody) return;
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                    ${escapeHtml(message)}
+                </td>
+            </tr>
+        `;
+    }
 
     function calculateStats() {
-        let active = 0;
-        let disabled = 0;
+        const active = rules.filter(rule => rule.active).length;
+        const disabled = rules.length - active;
 
-        syntheticRules.forEach(rule => {
-            if (rule.active) active++;
-            else disabled++;
+        if (statActive) statActive.textContent = active;
+        if (statDisabled) statDisabled.textContent = disabled;
+    }
+
+    function getFilteredRules() {
+        const search = searchInput?.value.trim().toLowerCase() || '';
+        const status = statusFilter?.value || '';
+
+        return rules.filter(rule => {
+            const matchesSearch =
+                !search ||
+                String(rule.name || '').toLowerCase().includes(search) ||
+                String(rule.mitreTechniqueId || '').toLowerCase().includes(search);
+
+            const matchesStatus =
+                !status ||
+                (status === 'Active' && rule.active) ||
+                (status === 'Disabled' && !rule.active);
+
+            return matchesSearch && matchesStatus;
         });
-
-        if (statActive) statActive.innerText = active;
-        if (statDisabled) statDisabled.innerText = disabled;
     }
 
     function renderRulesTable() {
         if (!tbody) return;
 
+        const filteredRules = getFilteredRules();
+
         tbody.innerHTML = '';
 
-        syntheticRules.forEach((rule, index) => {
+        if (filteredRules.length === 0) {
+            showTableMessage(
+                rules.length === 0
+                    ? 'No detection rules registered.'
+                    : 'No rules match the selected filters.'
+            );
+            calculateStats();
+            return;
+        }
+
+        filteredRules.forEach(rule => {
             const tr = document.createElement('tr');
+            const severity = normalizeSeverity(rule.severity);
+            const color = severityColors[severity] || '#94A3B8';
 
             if (!rule.active) {
                 tr.style.opacity = '0.6';
@@ -127,47 +155,44 @@
                 <td class="text-center">
                     <div class="form-check form-switch d-flex justify-content-center">
                         <input
-                            class="form-check-input"
+                            class="form-check-input rule-toggle"
                             type="checkbox"
+                            data-rule-id="${escapeHtml(rule.id)}"
                             ${rule.active ? 'checked' : ''}
-                            onchange="toggleRule(${index})"
-                            aria-label="${rule.active
-                                ? t('disableRule', 'Disable rule')
-                                : t('enableRule', 'Enable rule')} ${rule.id}">
+                            aria-label="${rule.active ? 'Disable' : 'Enable'} rule ${escapeHtml(rule.name)}">
                     </div>
                 </td>
 
                 <td style="font-weight: 600; color: ${rule.active ? '#F8FAFC' : '#94A3B8'};">
-                    ${rule.name}
+                    ${escapeHtml(rule.name)}
                 </td>
 
-                <td>
-                    ${translateCategory(rule.category)}
-                </td>
+                <td>${escapeHtml(translateCategory(rule.category))}</td>
 
                 <td style="font-family: monospace; color: var(--primary);">
-                    ${rule.mitre}
+                    ${escapeHtml(rule.mitreTechniqueId || 'N/A')}
                 </td>
 
                 <td>
                     <span class="badge"
-                          style="background-color: ${rule.color}20; color: ${rule.color}; border: 1px solid ${rule.color};">
-                        ${translateSeverity(rule.severity)}
+                        style="background-color: ${color}20; color: ${color}; border: 1px solid ${color};">
+                        ${escapeHtml(translateSeverity(severity))}
                     </span>
                 </td>
 
                 <td class="text-center fw-bold"
-                    style="color: ${rule.hits > 0 ? '#F8FAFC' : '#94A3B8'}">
-                    ${rule.hits}
+                    style="color: ${(rule.hitCount || 0) > 0 ? '#F8FAFC' : '#94A3B8'}">
+                    ${Number(rule.hitCount || 0)}
                 </td>
 
                 <td class="text-center">
                     <button
-                        class="btn btn-sm btn-outline-info py-0 px-2"
-                        title="${t('editLogic', 'Edit Logic')}"
-                        aria-label="${t('editLogic', 'Edit Logic')} ${rule.id}"
-                        onclick="editRule('${rule.id}')">
-                        <i class="bi bi-code-slash"></i>
+                        class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        type="button"
+                        disabled
+                        title="Rule editing is not available in the backend yet"
+                        aria-label="Editing unavailable">
+                        <i class="bi bi-lock"></i>
                     </button>
                 </td>
             `;
@@ -178,56 +203,137 @@
         calculateStats();
     }
 
-    window.toggleRule = function(index) {
-        if (!syntheticRules[index]) return;
+    async function loadRules() {
+        if (isLoading) return;
 
-        syntheticRules[index].active = !syntheticRules[index].active;
+        isLoading = true;
+        showTableMessage('Loading detection rules...');
 
-        renderRulesTable();
-    };
+        try {
+            const response = await HttpClient.get(ENDPOINTS.DETECTION.RULES);
 
-    window.editRule = function(id) {
-        console.log("Opening rule editor for:", id);
-    };
+            if (!response || !Array.isArray(response.data)) {
+                throw new Error('Unexpected detection rules response.');
+            }
 
-    if (formCreateRule) {
-        formCreateRule.addEventListener('submit', (e) => {
-            e.preventDefault();
-
-            const modalEl = document.getElementById('createRuleModal');
-            const modal = bootstrap.Modal.getInstance(modalEl);
-
-            const severity = e.target.querySelectorAll('select')[0].value;
-
-            const isCritical = severity === 'Critical';
-            const isHigh = severity === 'High';
-
-            const color = isCritical
-                ? '#EF4444'
-                : (isHigh ? '#F97316' : '#EAB308');
-
-            const newRule = {
-                id: "R-00" + (syntheticRules.length + 1),
-                name: e.target.querySelectorAll('input[type="text"]')[0].value,
-                category: "Custom",
-                mitre: e.target.querySelectorAll('input[type="text"]')[1].value || "N/A",
-                severity: severity,
-                color: color,
-                hits: 0,
-                active: document.getElementById('ruleActiveSwitch').checked
-            };
-
-            syntheticRules.unshift(newRule);
-
+            rules = response.data;
             renderRulesTable();
 
-            formCreateRule.reset();
-            modal?.hide();
+        } catch (error) {
+            console.error('Error loading detection rules:', error);
+            rules = [];
+            calculateStats();
+
+            showTableMessage(
+                error.message || 'Unable to load detection rules.'
+            );
+        } finally {
+            isLoading = false;
+        }
+    }
+
+    async function toggleRule(id, checkbox) {
+        checkbox.disabled = true;
+
+        try {
+            await HttpClient.patch(
+                ENDPOINTS.DETECTION.TOGGLE_RULE(id)
+            );
+
+            await loadRules();
+
+        } catch (error) {
+            console.error('Error changing rule status:', error);
+
+            checkbox.checked = !checkbox.checked;
+            checkbox.disabled = false;
+
+            alert(error.message || 'Unable to update rule status.');
+        }
+    }
+
+    if (tbody) {
+        tbody.addEventListener('change', event => {
+            const checkbox = event.target.closest('.rule-toggle');
+
+            if (!checkbox) return;
+
+            const id = checkbox.dataset.ruleId;
+            if (!id) return;
+
+            toggleRule(id, checkbox);
         });
     }
 
-    // Actualiza categorías y severidades sin modificar los datos originales.
+    if (formCreateRule) {
+        formCreateRule.addEventListener('submit', async event => {
+            event.preventDefault();
+
+            const name = document.getElementById('ruleName')?.value.trim();
+            const category = document.getElementById('ruleCategory')?.value;
+            const severity = document.getElementById('ruleSeverity')?.value;
+            const mitreTechniqueId =
+                document.getElementById('ruleMitre')?.value.trim();
+            const sigmaLogic =
+                document.getElementById('ruleSigma')?.value.trim();
+            const active =
+                document.getElementById('ruleActiveSwitch')?.checked;
+
+            if (!name || !category || !severity || !sigmaLogic) {
+                alert('Please complete all required fields.');
+                return;
+            }
+
+            const payload = {
+                name,
+                category,
+                mitreTechniqueId: mitreTechniqueId || null,
+                severity: severity.toUpperCase(),
+                sigmaLogic,
+                active: Boolean(active)
+            };
+
+            const submitButton = formCreateRule.querySelector(
+                'button[type="submit"]'
+            );
+
+            if (submitButton) submitButton.disabled = true;
+
+            try {
+                await HttpClient.post(
+                    ENDPOINTS.DETECTION.RULES,
+                    payload
+                );
+
+                formCreateRule.reset();
+
+                const modalElement =
+                    document.getElementById('createRuleModal');
+
+                const modal = modalElement
+                    ? bootstrap.Modal.getInstance(modalElement)
+                    : null;
+
+                modal?.hide();
+
+                await loadRules();
+
+            } catch (error) {
+                console.error('Error creating detection rule:', error);
+                alert(error.message || 'Unable to create detection rule.');
+            } finally {
+                if (submitButton) submitButton.disabled = false;
+            }
+        });
+    }
+
+    searchInput?.addEventListener('input', renderRulesTable);
+    statusFilter?.addEventListener('change', renderRulesTable);
+
     document.addEventListener('nova:languageChanged', renderRulesTable);
 
-    renderRulesTable();
+    window.loadDetectionRules = loadRules;
+    window.renderRulesTable = renderRulesTable;
+
+    loadRules();
 })();

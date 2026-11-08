@@ -3,25 +3,25 @@
     'use strict';
 
     // ==========================================
-    // CONFIGURACIÓN
+    // CONFIGURATION
     // ==========================================
 
     const STORAGE_KEY = 'nova-siem-language';
     const DEFAULT_LANGUAGE = 'es';
 
     // ==========================================
-    // DICCIONARIO DE TRADUCCIONES
+    // TRANSLATION DICTIONARY
     // ==========================================
 
     const translations = {
 
         // ======================================
-        // ESPAÑOL
+        // SPANISH
         // ======================================
 
         es: {
 
-            // Navegación
+            // Navigation
             mainMenu: 'Menú principal',
             dashboard: 'Panel de control',
             events: 'Gestión de eventos',
@@ -74,13 +74,13 @@
             result: 'Resultado',
             totalAlerts: 'Alertas totales',
 
-            // Severidades
+            // Severity
             critical: 'Crítica',
             high: 'Alta',
             medium: 'Media',
             low: 'Baja',
 
-            // Estados generales
+            // General statuses
             new: 'Nueva',
             inProgress: 'En progreso',
             underInvestigationStatus: 'En investigación',
@@ -96,7 +96,7 @@
             disabled: 'Deshabilitada',
             unassigned: 'Sin asignar',
 
-            // Eventos
+            // Events
             eventManagement: 'Gestión de eventos',
             uploadEvents: 'Cargar eventos',
             searchEvents: 'Buscar eventos...',
@@ -132,7 +132,7 @@
             normalize: 'Normalizar',
             normalisedIngested: 'Eventos normalizados e incorporados correctamente.',
 
-            // Alertas
+            // Alerts
             alertManagement: 'Gestión de alertas',
             searchAlerts: 'Buscar alertas...',
             assignee: 'Responsable',
@@ -153,7 +153,7 @@
             escalatedAlerts: 'Alertas escaladas',
             falsePositiveAlerts: 'Falsos positivos',
 
-            // Incidentes
+            // Incidents
             incidentManagement: 'Gestión de incidentes',
             declareMajorIncident: 'Declarar incidente mayor',
             createIncident: 'Crear incidente',
@@ -179,7 +179,7 @@
             dataExfiltration: 'Exfiltración de datos',
             phishingCampaign: 'Campaña de phishing',
 
-            // Investigaciones
+            // Investigations
             investigationWorkspace: 'Espacio de investigación',
             loggedInto: 'Inició sesión en',
             spawned: 'Generó',
@@ -202,6 +202,9 @@
             malicious: 'Malicioso',
             benign: 'Benigno',
             inconclusive: 'No concluyente',
+            truePositiveConfirmed: 'Verdadero positivo confirmado',
+            truePositiveMitigated: 'Verdadero positivo mitigado',
+            falsePositiveVerdict: 'Falso positivo',
             factPowerShell: 'Se observó la ejecución de PowerShell en el endpoint.',
             factConnection: 'Se detectó una conexión con una IP externa.',
             inferenceC2: 'La conexión podría corresponder a comunicación C2.',
@@ -210,7 +213,7 @@
             coseLayout: 'Distribución COSE',
             gridLayout: 'Distribución en cuadrícula',
 
-            // Detección
+            // Detection
             detectionEngine: 'Motor de detección',
             rulesLab: 'Laboratorio de reglas',
             createRule: 'Crear regla',
@@ -236,7 +239,7 @@
             ruleDisabled: 'Regla desactivada.',
             totalHits: 'Coincidencias',
 
-            // Reportes
+            // Reports
             reportingTitle: 'Informes y cumplimiento',
             reportingCompliance: 'Informes y cumplimiento',
             generateNewReport: 'Generar nuevo informe',
@@ -254,8 +257,8 @@
             compiling: 'Generando...',
             compileGenerate: 'Preparar y generar',
             download: 'Descargar',
-            reportSuccess: 'Informe generado correctamente y listo para descargar.',
-            generatedReady: 'generado y listo para descargar.',
+            reportSuccess: 'Informe generado correctamente.',
+            generatedReady: 'generado correctamente.',
             report: 'Informe',
             author: 'Autor',
             format: 'Formato',
@@ -274,7 +277,7 @@
             reportGenerated: 'Informe generado',
             system: 'Sistema',
 
-            // Autenticación
+            // Authentication
             authenticating: 'Autenticando...',
             establishSecureSession: 'Establecer sesión segura',
             invalidCredentials: 'Credenciales incorrectas. Inténtalo nuevamente.',
@@ -286,7 +289,7 @@
             signIn: 'Ingresar',
             signingOut: 'Cerrando sesión...',
 
-            // Utilidades
+            // Utilities
             search: 'Buscar...',
             filter: 'Filtrar',
             all: 'Todos',
@@ -312,8 +315,7 @@
             refreshData: 'Actualizar datos',
             actions: 'Acciones',
             yes: 'Sí',
-            no: 'No',
-            system: 'Sistema'
+            no: 'No'
         },
 
         // ======================================
@@ -503,6 +505,9 @@
             malicious: 'Malicious',
             benign: 'Benign',
             inconclusive: 'Inconclusive',
+            truePositiveConfirmed: 'Confirmed true positive',
+            truePositiveMitigated: 'Mitigated true positive',
+            falsePositiveVerdict: 'False positive',
             factPowerShell: 'PowerShell execution was observed on the endpoint.',
             factConnection: 'A connection to an external IP was detected.',
             inferenceC2: 'The connection may correspond to C2 communication.',
@@ -555,8 +560,8 @@
             compiling: 'Compiling...',
             compileGenerate: 'Compile & Generate',
             download: 'Download',
-            reportSuccess: 'Report generated successfully and ready for download.',
-            generatedReady: 'generated and ready for download.',
+            reportSuccess: 'Report generated successfully.',
+            generatedReady: 'generated successfully.',
             report: 'Report',
             author: 'Author',
             format: 'Format',
@@ -613,17 +618,18 @@
             refreshData: 'Refresh data',
             actions: 'Actions',
             yes: 'Yes',
-            no: 'No',
-            system: 'System'
+            no: 'No'
         }
     };
 
     // ==========================================
-    // OBTENER IDIOMA ACTUAL
+    // GET CURRENT LANGUAGE
     // ==========================================
 
     function getCurrentLanguage() {
+
         try {
+
             const savedLanguage = localStorage.getItem(STORAGE_KEY);
 
             return translations[savedLanguage]
@@ -631,16 +637,19 @@
                 : DEFAULT_LANGUAGE;
 
         } catch (error) {
+
             console.warn('Unable to access language storage:', error);
+
             return DEFAULT_LANGUAGE;
         }
     }
 
     // ==========================================
-    // TRADUCCIÓN CENTRAL
+    // TRANSLATION FUNCTION
     // ==========================================
 
     function t(key, fallback = null) {
+
         const language = getCurrentLanguage();
 
         return translations[language]?.[key]
@@ -650,19 +659,27 @@
     }
 
     // ==========================================
-    // TRADUCIR ELEMENTOS SIN DESTRUIR ICONOS
+    // TRANSLATE ELEMENT WITHOUT DESTROYING ICONS
     // ==========================================
 
     function translateElement(element, translatedText) {
-        const textNode = Array.from(element.childNodes).find(
+
+        const textNodes = Array.from(element.childNodes).filter(
             node =>
                 node.nodeType === Node.TEXT_NODE &&
                 node.nodeValue.trim() !== ''
         );
 
-        if (textNode) {
-            textNode.nodeValue = translatedText;
+        if (textNodes.length > 0) {
+
+            textNodes[0].nodeValue = translatedText;
+
+            textNodes.slice(1).forEach(node => {
+                node.remove();
+            });
+
         } else {
+
             element.appendChild(
                 document.createTextNode(translatedText)
             );
@@ -670,10 +687,11 @@
     }
 
     // ==========================================
-    // APLICAR TRADUCCIONES AL DOM
+    // APPLY TRANSLATIONS
     // ==========================================
 
     function translatePage(language = getCurrentLanguage()) {
+
         if (!translations[language]) {
             language = DEFAULT_LANGUAGE;
         }
@@ -682,8 +700,9 @@
 
         const dictionary = translations[language];
 
-        // Texto visible
+        // Visible text
         document.querySelectorAll('[data-i18n]').forEach(element => {
+
             const key = element.getAttribute('data-i18n');
 
             if (Object.prototype.hasOwnProperty.call(dictionary, key)) {
@@ -693,6 +712,7 @@
 
         // Placeholders
         document.querySelectorAll('[data-i18n-placeholder]').forEach(element => {
+
             const key = element.getAttribute('data-i18n-placeholder');
 
             if (Object.prototype.hasOwnProperty.call(dictionary, key)) {
@@ -700,8 +720,9 @@
             }
         });
 
-        // Atributos title
+        // Title attributes
         document.querySelectorAll('[data-i18n-title]').forEach(element => {
+
             const key = element.getAttribute('data-i18n-title');
 
             if (Object.prototype.hasOwnProperty.call(dictionary, key)) {
@@ -709,8 +730,9 @@
             }
         });
 
-        // Etiquetas accesibles
+        // Accessible labels
         document.querySelectorAll('[data-i18n-aria-label]').forEach(element => {
+
             const key = element.getAttribute('data-i18n-aria-label');
 
             if (Object.prototype.hasOwnProperty.call(dictionary, key)) {
@@ -718,7 +740,7 @@
             }
         });
 
-        // Actualizar selector de idioma
+        // Language selector
         const selector = document.getElementById('languageSelector');
 
         if (selector && selector.value !== language) {
@@ -727,24 +749,11 @@
     }
 
     // ==========================================
-    // CAMBIAR IDIOMA
+    // LANGUAGE CHANGE NOTIFICATION
     // ==========================================
 
-    function changeLanguage(language) {
-        if (!translations[language]) {
-            console.warn('Unsupported language:', language);
-            return;
-        }
+    function notifyLanguageChange(language) {
 
-        try {
-            localStorage.setItem(STORAGE_KEY, language);
-        } catch (error) {
-            console.warn('Unable to save language preference:', error);
-        }
-
-        translatePage(language);
-
-        // Notificar a los módulos dinámicos
         document.dispatchEvent(
             new CustomEvent('nova:languageChanged', {
                 detail: { language }
@@ -753,7 +762,32 @@
     }
 
     // ==========================================
-    // EXPONER FUNCIONES GLOBALMENTE
+    // CHANGE LANGUAGE
+    // ==========================================
+
+    function changeLanguage(language) {
+
+        if (!translations[language]) {
+            console.warn('Unsupported language:', language);
+            return;
+        }
+
+        try {
+
+            localStorage.setItem(STORAGE_KEY, language);
+
+        } catch (error) {
+
+            console.warn('Unable to save language preference:', error);
+        }
+
+        translatePage(language);
+
+        notifyLanguageChange(language);
+    }
+
+    // ==========================================
+    // GLOBAL FUNCTIONS
     // ==========================================
 
     window.translations = translations;
@@ -763,17 +797,19 @@
     window.changeLanguage = changeLanguage;
 
     // ==========================================
-    // INICIALIZACIÓN
+    // INITIALIZATION
     // ==========================================
 
     function initializeLanguage() {
+
         const selector = document.getElementById('languageSelector');
 
         if (selector) {
+
             selector.value = getCurrentLanguage();
 
-            // Evitar registrar el evento más de una vez
             if (!selector.dataset.languageInitialized) {
+
                 selector.addEventListener('change', event => {
                     changeLanguage(event.target.value);
                 });
@@ -786,12 +822,15 @@
     }
 
     if (document.readyState === 'loading') {
+
         document.addEventListener(
             'DOMContentLoaded',
             initializeLanguage,
             { once: true }
         );
+
     } else {
+
         initializeLanguage();
     }
 

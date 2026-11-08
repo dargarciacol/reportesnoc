@@ -1,349 +1,417 @@
 
-(function() {
+(function () {
     const tbody = document.getElementById('table-alerts-body');
+
     const statNew = document.getElementById('stat-new-alerts');
     const statProgress = document.getElementById('stat-progress-alerts');
     const statEscalated = document.getElementById('stat-escalated-alerts');
     const statFp = document.getElementById('stat-fp-alerts');
+
     const selectAllCheckbox = document.getElementById('selectAllAlerts');
+
+    let alerts = [];
+    let loading = false;
+
+    const STATUS = {
+        NEW: 'NEW',
+        IN_PROGRESS: 'IN_PROGRESS',
+        UNDER_INVESTIGATION: 'UNDER_INVESTIGATION',
+        ESCALATED: 'ESCALATED',
+        RESOLVED: 'RESOLVED',
+        FALSE_POSITIVE: 'FALSE_POSITIVE'
+    };
 
     function t(key, fallback) {
         return typeof window.t === 'function'
-            ? window.t(key, fallback)
+            ? window.t(key) || fallback
             : fallback;
     }
 
+    function escapeHTML(value) {
+        return String(value ?? '').replace(/[&<>"']/g, character => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        })[character]);
+    }
+
     function translateSeverity(severity) {
-        const keys = {
-            Critical: 'critical',
-            High: 'high',
-            Medium: 'medium',
-            Low: 'low'
+        const translations = {
+            CRITICAL: t('severity.critical', 'Critical'),
+            HIGH: t('severity.high', 'High'),
+            MEDIUM: t('severity.medium', 'Medium'),
+            LOW: t('severity.low', 'Low')
         };
 
-        return t(keys[severity], severity);
+        return translations[severity] || severity || '--';
     }
 
     function translateStatus(status) {
-        const keys = {
-            New: 'new',
-            'In Progress': 'inProgress',
-            'Under Investigation': 'underInvestigation',
-            Escalated: 'escalated',
-            Resolved: 'resolved',
-            'False Positive': 'falsePositive'
+        const translations = {
+            NEW: t('alerts.status.new', 'New'),
+            IN_PROGRESS: t('alerts.status.inProgress', 'In Progress'),
+            UNDER_INVESTIGATION: t('alerts.status.underInvestigation', 'Under Investigation'),
+            ESCALATED: t('alerts.status.escalated', 'Escalated'),
+            RESOLVED: t('alerts.status.resolved', 'Resolved'),
+            FALSE_POSITIVE: t('alerts.status.falsePositive', 'False Positive')
         };
 
-        return t(keys[status], status);
+        return translations[status] || status || '--';
     }
 
-    function formatAlertDate(dateString) {
-        const language = typeof window.getCurrentLanguage === 'function'
-            ? window.getCurrentLanguage()
-            : 'en';
+    function getSeverityClass(severity) {
+        const classes = {
+            CRITICAL: 'danger',
+            HIGH: 'warning',
+            MEDIUM: 'info',
+            LOW: 'secondary'
+        };
 
-        const locale = language === 'es' ? 'es-CO' : 'en-US';
-
-        return new Intl.DateTimeFormat(locale, {
-            dateStyle: 'short',
-            timeStyle: 'medium',
-            timeZone: 'UTC'
-        }).format(new Date(dateString));
+        return classes[severity] || 'secondary';
     }
 
-    let syntheticAlerts = [
-        {
-            id: "ALT-501",
-            time: "2026-11-07T16:45:02Z",
-            rule: "Multiple Failed Logins",
-            severity: "High",
-            color: "#F97316",
-            status: "New",
-            assignee: "Unassigned"
-        },
-        {
-            id: "ALT-502",
-            time: "2026-11-07T16:42:20Z",
-            rule: "Suspicious PowerShell Execution",
-            severity: "Critical",
-            color: "#EF4444",
-            status: "In Progress",
-            assignee: "s.garcia"
-        },
-        {
-            id: "ALT-503",
-            time: "2026-11-07T16:30:15Z",
-            rule: "Login from Unusual Location",
-            severity: "Medium",
-            color: "#EAB308",
-            status: "Under Investigation",
-            assignee: "s.garcia"
-        },
-        {
-            id: "ALT-504",
-            time: "2026-11-07T16:05:00Z",
-            rule: "Ransomware Extension Detected",
-            severity: "Critical",
-            color: "#EF4444",
-            status: "Escalated",
-            assignee: "System"
-        },
-        {
-            id: "ALT-505",
-            time: "2026-11-07T15:50:33Z",
-            rule: "Impossible Travel",
-            severity: "Medium",
-            color: "#EAB308",
-            status: "Resolved",
-            assignee: "m.rodriguez"
-        },
-        {
-            id: "ALT-506",
-            time: "2026-11-07T14:20:10Z",
-            rule: "Port Scan Activity",
-            severity: "Low",
-            color: "#06B6D4",
-            status: "False Positive",
-            assignee: "j.doe"
-        }
-    ];
-
-    function getStatusBadge(status) {
-        const badges = {
-            'New': 'bg-primary',
-            'In Progress': '',
-            'Under Investigation': '',
-            'Escalated': '',
-            'Resolved': '',
-            'False Positive': 'bg-secondary'
+    function getStatusClass(status) {
+        const classes = {
+            NEW: 'danger',
+            IN_PROGRESS: 'primary',
+            UNDER_INVESTIGATION: 'info',
+            ESCALATED: 'warning',
+            RESOLVED: 'success',
+            FALSE_POSITIVE: 'secondary'
         };
 
-        const styles = {
-            'In Progress': 'background-color: #06B6D4; color: #0B1020;',
-            'Under Investigation': 'background-color: #6366F1;',
-            'Escalated': 'background-color: #EF4444;',
-            'Resolved': 'background-color: #22C55E;'
-        };
-
-        const badgeClass = badges[status] || 'bg-secondary';
-        const style = styles[status] ? `style="${styles[status]}"` : '';
-
-        return `
-            <span class="badge ${badgeClass}" ${style}>
-                ${translateStatus(status)}
-            </span>
-        `;
+        return classes[status] || 'secondary';
     }
 
-    function calculateStats() {
-        const stats = {
-            new: 0,
-            progress: 0,
-            escalated: 0,
-            fp: 0
-        };
+    function formatAlertDate(dateValue) {
+        if (!dateValue) return '--';
 
-        syntheticAlerts.forEach(alert => {
-            if (alert.status === 'New') stats.new++;
+        const date = new Date(dateValue);
 
-            if (
-                alert.status === 'In Progress' ||
-                alert.status === 'Under Investigation'
-            ) {
-                stats.progress++;
+        if (Number.isNaN(date.getTime())) return '--';
+
+        const language = document.documentElement.lang || 'en';
+
+        return new Intl.DateTimeFormat(
+            language.startsWith('es') ? 'es-CO' : 'en-US',
+            {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+                timeZone: 'UTC'
             }
-
-            if (alert.status === 'Escalated') stats.escalated++;
-            if (alert.status === 'False Positive') stats.fp++;
-        });
-
-        if (statNew) statNew.innerText = stats.new;
-        if (statProgress) statProgress.innerText = stats.progress;
-        if (statEscalated) statEscalated.innerText = stats.escalated;
-        if (statFp) statFp.innerText = stats.fp;
+        ).format(date) + ' UTC';
     }
 
-    function renderAlertsTable() {
+    function normalizeAlert(alert) {
+        return {
+            id: alert.id,
+            rule: alert.ruleTriggered || '--',
+            severity: alert.severity || 'LOW',
+            status: alert.status || STATUS.NEW,
+            assignee: alert.assignedTo || '--',
+            time: alert.createdAt || null
+        };
+    }
+
+    function updateStatistics() {
+        if (statNew) {
+            statNew.textContent = alerts.filter(
+                alert => alert.status === STATUS.NEW
+            ).length;
+        }
+
+        if (statProgress) {
+            statProgress.textContent = alerts.filter(
+                alert =>
+                    alert.status === STATUS.IN_PROGRESS ||
+                    alert.status === STATUS.UNDER_INVESTIGATION
+            ).length;
+        }
+
+        if (statEscalated) {
+            statEscalated.textContent = alerts.filter(
+                alert => alert.status === STATUS.ESCALATED
+            ).length;
+        }
+
+        if (statFp) {
+            statFp.textContent = alerts.filter(
+                alert => alert.status === STATUS.FALSE_POSITIVE
+            ).length;
+        }
+    }
+
+    function renderAlerts() {
         if (!tbody) return;
 
-        tbody.innerHTML = '';
+        if (loading) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm me-2"></div>
+                        ${t('common.loading', 'Loading alerts...')}
+                    </td>
+                </tr>
+            `;
+            return;
+        }
 
-        syntheticAlerts.forEach(alert => {
-            const tr = document.createElement('tr');
-
-            const assignee = alert.assignee === 'Unassigned'
-                ? `<i>${t('unassigned', 'Unassigned')}</i>`
-                : `<i class="bi bi-person-fill me-1"></i>${alert.assignee}`;
-
-            tr.innerHTML = `
-                <td>
-                    <input
-                        class="form-check-input bg-main border-panel alert-checkbox"
-                        type="checkbox"
-                        value="${alert.id}"
-                        aria-label="${t('selectAlert', 'Select alert')} ${alert.id}">
-                </td>
-
-                <td style="font-family: monospace; color: var(--primary); font-weight: 600;">
-                    ${alert.id}
-                </td>
-
-                <td style="color: var(--text-muted); font-size: 0.85rem;">
-                    ${formatAlertDate(alert.time)}
-                </td>
-
-                <td style="font-weight: 500;">
-                    ${alert.rule}
-                </td>
-
-                <td>
-                    <span class="badge"
-                        style="background-color: ${alert.color}20; color: ${alert.color}; border: 1px solid ${alert.color};">
-                        ${translateSeverity(alert.severity)}
-                    </span>
-                </td>
-
-                <td>
-                    ${getStatusBadge(alert.status)}
-                </td>
-
-                <td style="color: var(--text-muted); font-size: 0.9rem;">
-                    ${assignee}
-                </td>
-
-                <td class="text-center">
-                    <div class="dropdown">
-                        <button
-                            class="btn btn-sm btn-outline-secondary border-0 py-0"
-                            type="button"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false"
-                            aria-label="${t('alertActions', 'Alert actions')} ${alert.id}">
-                            <i class="bi bi-three-dots-vertical"></i>
-                        </button>
-
-                        <ul class="dropdown-menu dropdown-menu-dark"
-                            style="background-color: var(--bg-surface); border-color: var(--bg-panel);">
-
-                            <li>
-                                <a class="dropdown-item text-info"
-                                   href="#"
-                                   onclick="actionAlert('${alert.id}', 'assign'); return false;">
-                                    <i class="bi bi-person-plus me-2"></i>
-                                    ${t('assignToMe', 'Assign to Me')}
-                                </a>
-                            </li>
-
-                            <li>
-                                <a class="dropdown-item text-warning"
-                                   href="#"
-                                   onclick="actionInvestigate('${alert.id}'); return false;">
-                                    <i class="bi bi-search me-2"></i>
-                                    ${t('investigate', 'Investigate')}
-                                </a>
-                            </li>
-
-                            <li><hr class="dropdown-divider border-panel"></li>
-
-                            <li>
-                                <a class="dropdown-item text-danger"
-                                   href="#"
-                                   onclick="actionAlert('${alert.id}', 'escalate'); return false;">
-                                    <i class="bi bi-capslock-fill me-2"></i>
-                                    ${t('escalateToIncident', 'Escalate to Incident')}
-                                </a>
-                            </li>
-
-                            <li>
-                                <a class="dropdown-item text-success"
-                                   href="#"
-                                   onclick="actionAlert('${alert.id}', 'resolve'); return false;">
-                                    <i class="bi bi-check-circle me-2"></i>
-                                    ${t('markResolved', 'Mark Resolved')}
-                                </a>
-                            </li>
-
-                            <li>
-                                <a class="dropdown-item text-secondary"
-                                   href="#"
-                                   onclick="actionAlert('${alert.id}', 'fp'); return false;">
-                                    <i class="bi bi-slash-circle me-2"></i>
-                                    ${t('markFalsePositive', 'False Positive')}
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-                </td>
+        if (!alerts.length) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4 text-secondary">
+                        ${t('alerts.empty', 'No alerts found')}
+                    </td>
+                </tr>
             `;
 
-            tbody.appendChild(tr);
-        });
+            updateStatistics();
+            return;
+        }
 
-        calculateStats();
+        tbody.innerHTML = alerts.map(alert => {
+            const id = escapeHTML(alert.id);
 
-        if (selectAllCheckbox) {
-            selectAllCheckbox.checked = false;
-            selectAllCheckbox.indeterminate = false;
+            return `
+                <tr>
+                    <td>
+                        <input
+                            type="checkbox"
+                            class="form-check-input alert-checkbox"
+                            value="${id}"
+                            aria-label="Select alert"
+                        >
+                    </td>
+
+                    <td class="text-nowrap">
+                        ${escapeHTML(formatAlertDate(alert.time))}
+                    </td>
+
+                    <td>
+                        <div class="fw-semibold">
+                            ${escapeHTML(alert.rule)}
+                        </div>
+                        <small class="text-secondary">
+                            ${id}
+                        </small>
+                    </td>
+
+                    <td>
+                        <span class="badge bg-${getSeverityClass(alert.severity)}">
+                            ${escapeHTML(translateSeverity(alert.severity))}
+                        </span>
+                    </td>
+
+                    <td>
+                        <span class="badge bg-${getStatusClass(alert.status)}">
+                            ${escapeHTML(translateStatus(alert.status))}
+                        </span>
+                    </td>
+
+                    <td>
+                        ${escapeHTML(alert.assignee)}
+                    </td>
+
+                    <td>
+                        <div class="dropdown">
+                            <button
+                                class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                type="button"
+                                data-bs-toggle="dropdown"
+                                aria-expanded="false"
+                            >
+                                ${t('common.actions', 'Actions')}
+                            </button>
+
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <button
+                                        class="dropdown-item"
+                                        data-alert-action="assign"
+                                        data-alert-id="${id}"
+                                    >
+                                        ${t('alerts.assignToMe', 'Assign to Me')}
+                                    </button>
+                                </li>
+
+                                <li>
+                                    <button
+                                        class="dropdown-item"
+                                        data-alert-action="investigate"
+                                        data-alert-id="${id}"
+                                    >
+                                        ${t('alerts.investigate', 'Investigate')}
+                                    </button>
+                                </li>
+
+                                <li>
+                                    <button
+                                        class="dropdown-item"
+                                        data-alert-action="escalate"
+                                        data-alert-id="${id}"
+                                    >
+                                        ${t('alerts.escalate', 'Escalate')}
+                                    </button>
+                                </li>
+
+                                <li>
+                                    <hr class="dropdown-divider">
+                                </li>
+
+                                <li>
+                                    <button
+                                        class="dropdown-item text-success"
+                                        data-alert-action="resolve"
+                                        data-alert-id="${id}"
+                                    >
+                                        ${t('alerts.resolve', 'Resolve')}
+                                    </button>
+                                </li>
+
+                                <li>
+                                    <button
+                                        class="dropdown-item text-secondary"
+                                        data-alert-action="false-positive"
+                                        data-alert-id="${id}"
+                                    >
+                                        ${t('alerts.falsePositive', 'False Positive')}
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        updateStatistics();
+    }
+
+    async function loadAlerts() {
+        if (!tbody || typeof HttpClient === 'undefined') {
+            console.error('Alerts: HttpClient or table element not found.');
+            return;
+        }
+
+        loading = true;
+        renderAlerts();
+
+        try {
+            const response = await HttpClient.get(ENDPOINTS.ALERTS.LIST);
+            const page = response?.data;
+
+            if (!page || !Array.isArray(page.content)) {
+                throw new Error('Unexpected alerts API response format.');
+            }
+
+            alerts = page.content.map(normalizeAlert);
+
+            renderAlerts();
+
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+            }
+
+        } catch (error) {
+            console.error('Failed to load alerts:', error);
+
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-danger py-4">
+                        ${escapeHTML(error.message || 'Unable to load alerts')}
+                    </td>
+                </tr>
+            `;
+
+        } finally {
+            loading = false;
         }
     }
 
-    if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('change', (e) => {
-            const checkboxes = document.querySelectorAll('.alert-checkbox');
+    async function updateAlertStatus(id, status) {
+        if (!id || !Object.values(STATUS).includes(status)) {
+            console.error('Invalid alert ID or status.');
+            return;
+        }
+
+        try {
+            await HttpClient.patch(
+                ENDPOINTS.ALERTS.UPDATE_STATUS(id),
+                { status }
+            );
+
+            await loadAlerts();
+
+        } catch (error) {
+            console.error('Failed to update alert:', error);
+
+            alert(
+                error.message ||
+                t('alerts.updateError', 'Unable to update alert')
+            );
+        }
+    }
+
+    async function handleAlertAction(action, id) {
+        const statusByAction = {
+            assign: STATUS.IN_PROGRESS,
+            investigate: STATUS.UNDER_INVESTIGATION,
+            escalate: STATUS.ESCALATED,
+            resolve: STATUS.RESOLVED,
+            'false-positive': STATUS.FALSE_POSITIVE
+        };
+
+        const status = statusByAction[action];
+
+        if (!status) return;
+
+        await updateAlertStatus(id, status);
+    }
+
+    if (tbody) {
+        tbody.addEventListener('click', event => {
+            const button = event.target.closest('[data-alert-action]');
+
+            if (!button) return;
+
+            handleAlertAction(
+                button.dataset.alertAction,
+                button.dataset.alertId
+            );
+        });
+    }
+
+    if (selectAllCheckbox && tbody) {
+        selectAllCheckbox.addEventListener('change', () => {
+            const checkboxes = tbody.querySelectorAll('.alert-checkbox');
 
             checkboxes.forEach(checkbox => {
-                checkbox.checked = e.target.checked;
+                checkbox.checked = selectAllCheckbox.checked;
             });
         });
     }
 
     if (tbody) {
-        tbody.addEventListener('change', (e) => {
-            if (!e.target.classList.contains('alert-checkbox')) return;
+        tbody.addEventListener('change', event => {
+            if (!event.target.classList.contains('alert-checkbox')) return;
 
             const checkboxes = [...tbody.querySelectorAll('.alert-checkbox')];
 
-            const checkedCount = checkboxes.filter(cb => cb.checked).length;
-
             if (selectAllCheckbox) {
                 selectAllCheckbox.checked =
-                    checkedCount === checkboxes.length && checkboxes.length > 0;
-
-                selectAllCheckbox.indeterminate =
-                    checkedCount > 0 && checkedCount < checkboxes.length;
+                    checkboxes.length > 0 &&
+                    checkboxes.every(checkbox => checkbox.checked);
             }
         });
     }
 
-    window.actionAlert = function(id, action) {
-        const alertIndex = syntheticAlerts.findIndex(alert => alert.id === id);
+    window.actionAlert = handleAlertAction;
+    window.renderAlerts = renderAlerts;
+    window.loadAlerts = loadAlerts;
 
-        if (alertIndex === -1) return;
+    document.addEventListener('nova:languageChanged', renderAlerts);
 
-        const alert = syntheticAlerts[alertIndex];
-
-        if (action === 'assign') {
-            alert.assignee = 's.garcia';
-            alert.status = 'In Progress';
-        } else if (action === 'escalate') {
-            alert.status = 'Escalated';
-        } else if (action === 'resolve') {
-            alert.status = 'Resolved';
-        } else if (action === 'fp') {
-            alert.status = 'False Positive';
-        }
-
-        renderAlertsTable();
-    };
-
-    window.actionInvestigate = function(id) {
-        console.log("Routing to Investigation L2 for alert:", id);
-
-        // Pendiente: integrar navegación al workspace de investigaciones
-        // y transferir el ID de la alerta seleccionada.
-    };
-
-    document.addEventListener('nova:languageChanged', renderAlertsTable);
-
-    renderAlertsTable();
+    loadAlerts();
 })();

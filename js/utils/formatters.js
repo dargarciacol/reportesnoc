@@ -1,5 +1,6 @@
 
 const Formatters = {
+
     formatDateISO: (dateString) => {
         if (!dateString) return '--';
 
@@ -29,30 +30,31 @@ const Formatters = {
 
     getSeverityColor: (severity) => {
         const colors = {
-            'Critical': '#EF4444',
-            'High': '#F97316',
-            'Medium': '#EAB308',
-            'Low': '#06B6D4'
+            CRITICAL: '#EF4444',
+            HIGH: '#F97316',
+            MEDIUM: '#EAB308',
+            LOW: '#06B6D4'
         };
 
-        return colors[severity] || '#94A3B8';
+        return colors[String(severity || '').toUpperCase()] || '#94A3B8';
     },
 
     translateSeverity: (severity) => {
         const translations = {
-            Critical: 'critical',
-            High: 'high',
-            Medium: 'medium',
-            Low: 'low'
+            CRITICAL: 'critical',
+            HIGH: 'high',
+            MEDIUM: 'medium',
+            LOW: 'low'
         };
 
-        const key = translations[severity];
+        const normalizedSeverity = String(severity || '').toUpperCase();
+        const key = translations[normalizedSeverity];
 
-        if (!key) return severity;
+        if (!key) return severity || '--';
 
         return typeof window.t === 'function'
-            ? window.t(key, severity)
-            : severity;
+            ? window.t(key, normalizedSeverity)
+            : normalizedSeverity;
     },
 
     createSeverityBadge: (severity) => {
