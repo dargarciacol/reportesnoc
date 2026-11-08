@@ -2,10 +2,6 @@
 (function () {
     'use strict';
 
-    document.addEventListener('DOMContentLoaded', initializeAuth, {
-        once: true
-    });
-
     function initializeAuth() {
 
         // =========================================================
@@ -66,12 +62,12 @@
                         role="status"
                         aria-hidden="true">
                     </span>
-                    ${translate('authenticating', 'Authenticating...')}
+                    ${translate('authenticating', 'Autenticando...')}
                 `;
             } else {
                 button.textContent = translate(
                     'establishSecureSession',
-                    'Establish Secure Session'
+                    'Establecer sesión segura'
                 );
             }
         }
@@ -80,31 +76,60 @@
             sessionStorage.removeItem('nova_token');
             sessionStorage.removeItem('nova_user');
             sessionStorage.removeItem('nova_selected_incident_id');
+
+            window.NOVA_CURRENT_USER = null;
         }
 
-        function saveUserSession(userData) {
+        // =========================================================
+        // SAVE SESSION
+        // =========================================================
+
+        function saveUserSession(userData, token) {
+
+            if (!token || typeof token !== 'string' || !token.trim()) {
+                throw new Error(
+                    'El servidor no proporcionó un token JWT válido.'
+                );
+            }
+
+            if (!userData || !userData.username) {
+                throw new Error(
+                    'El servidor no proporcionó información válida del usuario.'
+                );
+            }
+
             const normalizedUser = {
                 username: userData.username,
-                name: userData.fullName || userData.name || userData.username,
+                name: userData.fullName ||
+                    userData.name ||
+                    userData.username,
                 role: userData.role || ''
             };
 
+            // Guardar JWT
+            sessionStorage.setItem(
+                'nova_token',
+                token
+            );
+
+            // Guardar información del usuario
             sessionStorage.setItem(
                 'nova_user',
                 JSON.stringify(normalizedUser)
             );
 
-            // Compatible with a backend that also returns a JWT.
-            if (userData.token) {
-                sessionStorage.setItem('nova_token', userData.token);
-            } else {
-                sessionStorage.removeItem('nova_token');
-            }
+            // Usuario disponible para los módulos
+            window.NOVA_CURRENT_USER = normalizedUser;
 
             return normalizedUser;
         }
 
+        // =========================================================
+        // GET STORED USER
+        // =========================================================
+
         function getStoredUser() {
+
             const storedUser = sessionStorage.getItem('nova_user');
 
             if (!storedUser) return null;
@@ -119,33 +144,66 @@
                 return user;
 
             } catch (error) {
-                console.error('Invalid stored user session:', error);
+                console.error(
+                    'NOVA SIEM: Sesión de usuario inválida:',
+                    error
+                );
+
                 return null;
             }
         }
 
+        // =========================================================
+        // SESSION VALIDATION
+        // =========================================================
+
+        function hasValidLocalSession() {
+
+            const token = sessionStorage.getItem('nova_token');
+            const user = getStoredUser();
+
+            return Boolean(
+                token &&
+                token.trim() &&
+                user
+            );
+        }
+
+        // =========================================================
+        // REDIRECT
+        // =========================================================
+
         function redirectToLogin() {
+
             clearLocalSession();
 
             if (!window.location.pathname.endsWith('/index.html') &&
                 !window.location.pathname.endsWith('/')) {
+
                 window.location.replace('index.html');
             }
         }
 
         function isAppPage() {
-            return window.location.pathname.endsWith('/app.html') ||
-                window.location.pathname === 'app.html';
+            return window.location.pathname.endsWith('/app.html');
         }
 
+        // =========================================================
+        // PROFILE
+        // =========================================================
+
         function updateUserProfile(userData) {
+
             if (userNameElement) {
                 userNameElement.textContent =
-                    userData.name || userData.username || 'Usuario';
+                    userData.name ||
+                    userData.username ||
+                    'Usuario';
             }
 
             if (userRoleElement) {
-                userRoleElement.textContent = userData.role || '';
+                userRoleElement.textContent =
+                    userData.role || '';
             }
         }
 
@@ -154,16 +212,20 @@
         // =========================================================
 
         async function handleLogin(event) {
+
             event.preventDefault();
 
             if (loginInProgress) return;
 
-            const usernameInput = document.getElementById('username');
-            const passwordInput = document.getElementById('password');
+            const usernameInput =
+                document.getElementById('username');
+
+            const passwordInput =
+                document.getElementById('password');
 
             if (!usernameInput || !passwordInput) {
                 showLoginError(
-                    'Login form fields are not available.'
+                    'Los campos de inicio de sesión no están disponibles.'
                 );
                 return;
             }
@@ -177,7 +239,7 @@
                 showLoginError(
                     translate(
                         'credentialsRequired',
-                        'Username and password are required.'
+                        'El usuario y la contraseña son obligatorios.'
                     )
                 );
                 return;
@@ -187,6 +249,9 @@
             setLoginLoading(true);
 
             try {
+
+                clearLocalSession();
+
                 const response = await HttpClient.post(
                     ENDPOINTS.AUTH.LOGIN,
                     {
@@ -195,52 +260,70 @@
                     }
                 );
 
+                // Estructura real de AuthController:
+                // response.data.token
+                // response.data.user
+
                 const authData = response?.data;
 
-                // The current AuthController returns the user directly.
-                // Also accepts a nested user if the backend changes later.
-                const backendUser = authData?.user || authData;
+                const token = authData?.token;
+                const backendUser = authData?.user;
 
-                if (
-                    !backendUser ||
-                    typeof backendUser.username !== 'string' ||
-                    !backendUser.username.trim()
-                ) {
+                if (!token) {
                     throw new Error(
-                        translate(
-                            'invalidAuthenticationResponse',
-                            'The server returned an invalid authentication response.'
-                        )
+                        'El backend no devolvió el token JWT.'
                     );
                 }
 
-                saveUserSession(backendUser);
+                if (!backendUser?.username) {
+                    throw new Error(
+                        'El backend no devolvió los datos del usuario.'
+                    );
+                }
+
+                // Guardar usuario y token correctamente
+                saveUserSession(
+                    backendUser,
+                    token
+                );
+
+                console.info(
+                    'NOVA SIEM: Autenticación completada correctamente.'
+                );
 
                 window.location.replace('app.html');
 
             } catch (error) {
-                console.error('Login error:', error);
+
+                console.error(
+                    'NOVA SIEM: Error de autenticación:',
+                    error
+                );
 
                 clearLocalSession();
 
                 if (error.status === 401 || error.status === 403) {
+
                     showLoginError(
                         translate(
                             'invalidCredentials',
-                            'Invalid username or password.'
+                            'Usuario o contraseña incorrectos.'
                         )
                     );
+
                 } else {
+
                     showLoginError(
                         error.message ||
                         translate(
                             'connectionError',
-                            'Unable to connect to the server.'
+                            'No fue posible conectar con el servidor.'
                         )
                     );
                 }
 
             } finally {
+
                 loginInProgress = false;
                 setLoginLoading(false);
             }
@@ -251,6 +334,7 @@
         // =========================================================
 
         async function logout() {
+
             if (logoutInProgress) return;
 
             logoutInProgress = true;
@@ -264,7 +348,9 @@
             }
 
             try {
-                if (sessionStorage.getItem('nova_user')) {
+
+                if (sessionStorage.getItem('nova_token')) {
+
                     await HttpClient.post(
                         ENDPOINTS.AUTH.LOGOUT,
                         {}
@@ -272,9 +358,14 @@
                 }
 
             } catch (error) {
-                console.warn('Backend logout failed:', error);
+
+                console.warn(
+                    'NOVA SIEM: Error al cerrar sesión en el backend:',
+                    error
+                );
 
             } finally {
+
                 clearLocalSession();
 
                 window.location.replace('index.html');
@@ -286,14 +377,18 @@
         // =========================================================
 
         function protectApplication() {
+
             if (!isAppPage()) return;
 
-            const userData = getStoredUser();
+            if (!hasValidLocalSession()) {
 
-            if (!userData) {
                 redirectToLogin();
                 return;
             }
+
+            const userData = getStoredUser();
+
+            window.NOVA_CURRENT_USER = userData;
 
             updateUserProfile(userData);
         }
@@ -303,12 +398,13 @@
         // =========================================================
 
         function handleExistingSession() {
+
             if (!loginForm) return;
 
-            const userData = getStoredUser();
-
-            if (userData) {
+            if (hasValidLocalSession()) {
                 window.location.replace('app.html');
+            } else {
+                clearLocalSession();
             }
         }
 
@@ -317,6 +413,7 @@
         // =========================================================
 
         function handleLanguageChanged() {
+
             if (loginForm && !loginInProgress) {
                 setLoginLoading(false);
             }
@@ -326,10 +423,20 @@
         // EVENT LISTENERS
         // =========================================================
 
-        loginForm?.addEventListener('submit', handleLogin);
+        loginForm?.addEventListener(
+            'submit',
+            handleLogin
+        );
 
-        btnLogout?.addEventListener('click', logout);
-        btnProfileLogout?.addEventListener('click', logout);
+        btnLogout?.addEventListener(
+            'click',
+            logout
+        );
+
+        btnProfileLogout?.addEventListener(
+            'click',
+            logout
+        );
 
         btnProfile?.addEventListener('click', event => {
             event.preventDefault();
@@ -346,6 +453,19 @@
 
         protectApplication();
         handleExistingSession();
+    }
+
+    if (document.readyState === 'loading') {
+
+        document.addEventListener(
+            'DOMContentLoaded',
+            initializeAuth,
+            { once: true }
+        );
+
+    } else {
+
+        initializeAuth();
     }
 
 })();
