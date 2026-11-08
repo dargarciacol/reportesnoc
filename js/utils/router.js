@@ -18,13 +18,23 @@
 
         let currentModuleScript = null;
         let navigationCounter = 0;
+        let currentRoute = null;
 
         // ==========================================
-        // ROUTES
+        // HELPERS
         // ==========================================
+
+        function escapeHTML(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            })[char]);
+        }
 
         function validateRoute(route) {
-
             if (!route || !/^[a-zA-Z0-9_-]+$/.test(route)) {
                 return 'dashboard';
             }
@@ -33,10 +43,16 @@
         }
 
         function getRouteFromURL() {
-
             const params = new URLSearchParams(window.location.search);
-
             return validateRoute(params.get('page'));
+        }
+
+        function dispatchRouterEvent(eventName, route) {
+            document.dispatchEvent(
+                new CustomEvent(eventName, {
+                    detail: { route }
+                })
+            );
         }
 
         // ==========================================
@@ -44,10 +60,8 @@
         // ==========================================
 
         function updateActiveLink(route) {
-
             document.querySelectorAll('.nav-link[data-route]')
                 .forEach(link => {
-
                     link.classList.toggle(
                         'active',
                         link.dataset.route === route
@@ -56,21 +70,14 @@
         }
 
         function updateBreadcrumb(route) {
-
             const label = route
                 .replace(/[-_]/g, ' ')
                 .replace(/\b\w/g, char => char.toUpperCase());
 
-            breadcrumb.innerHTML = `
-                NOVA SIEM /
-                <span style="color: var(--text-main);">
-                    ${label}
-                </span>
-            `;
+            breadcrumb.textContent = `NOVA SIEM / ${label}`;
         }
 
         function translateCurrentPage() {
-
             if (typeof window.translatePage === 'function') {
                 window.translatePage();
             }
@@ -81,17 +88,27 @@
         // ==========================================
 
         function showLoading() {
-
             const message = typeof window.t === 'function'
                 ? window.t('loading', 'Loading module...')
                 : 'Loading module...';
 
-            contentArea.innerHTML = `
-                <div class="d-flex justify-content-center align-items-center p-5">
-                    <div class="spinner-border text-primary" role="status"></div>
-                    <span class="ms-3 text-muted">${message}</span>
-                </div>
-            `;
+            const wrapper = document.createElement('div');
+
+            wrapper.className =
+                'd-flex justify-content-center align-items-center p-5';
+
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner-border text-primary';
+            spinner.setAttribute('role', 'status');
+
+            const text = document.createElement('span');
+            text.className = 'ms-3 text-muted';
+            text.textContent = message;
+
+            wrapper.appendChild(spinner);
+            wrapper.appendChild(text);
+
+            contentArea.replaceChildren(wrapper);
         }
 
         // ==========================================
@@ -100,8 +117,14 @@
 
         function cleanupCurrentModule() {
 
-            if (typeof window.destroyCurrentModule === 'function') {
+            if (currentRoute) {
+                dispatchRouterEvent(
+                    'nova:pageUnloading',
+                    currentRoute
+                );
+            }
 
+            if (typeof window.destroyCurrentModule === 'function') {
                 try {
                     window.destroyCurrentModule();
                 } catch (error) {
@@ -115,6 +138,8 @@
                 currentModuleScript.remove();
                 currentModuleScript = null;
             }
+
+            currentRoute = null;
         }
 
         // ==========================================
@@ -122,8 +147,11 @@
         // ==========================================
 
         async function loadHTML(route) {
-
-            const response = await fetch(`pages/${route}.html`);
+            const response = await fetch(`pages/${route}.html`, {
+                headers: {
+                    'Accept': 'text/html'
+                }
+            });
 
             if (!response.ok) {
                 throw new Error(
@@ -131,7 +159,7 @@
                 );
             }
 
-            return await response.text();
+            return response.text();
         }
 
         // ==========================================
@@ -139,7 +167,6 @@
         // ==========================================
 
         function loadModuleScript(route) {
-
             return new Promise((resolve, reject) => {
 
                 const script = document.createElement('script');
@@ -150,10 +177,11 @@
 
                 currentModuleScript = script;
 
-                script.onload = () => resolve();
+                script.onload = () => {
+                    resolve();
+                };
 
                 script.onerror = () => {
-
                     script.remove();
 
                     if (currentModuleScript === script) {
@@ -177,34 +205,39 @@
 
         function showError(route, error) {
 
-            console.error(`NOVA SIEM Router: ${route}`, error);
+            const wrapper = document.createElement('div');
 
-            contentArea.innerHTML = `
-                <div class="alert alert-danger bg-dark text-danger border-danger">
-                    <h5>
-                        <i class="bi bi-exclamation-triangle me-2"></i>
-                        Error loading module
-                    </h5>
+            wrapper.className =
+                'alert alert-danger bg-dark text-danger border-danger';
 
-                    <p>
-                        Unable to load:
-                        <strong>${route}</strong>
-                    </p>
+            wrapper.innerHTML = `
+                <h5>
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Error loading module
+                </h5>
 
-                    <small>${error.message}</small>
+                <p>
+                    Unable to load:
+                    <strong>${escapeHTML(route)}</strong>
+                </p>
 
-                    <div class="mt-3">
-                        <button id="retry-module"
-                                class="btn btn-outline-danger btn-sm">
-                            <i class="bi bi-arrow-clockwise me-1"></i>
-                            Retry
-                        </button>
-                    </div>
+                <small>${escapeHTML(error?.message || 'Unknown error')}</small>
+
+                <div class="mt-3">
+                    <button id="retry-module"
+                            class="btn btn-outline-danger btn-sm">
+                        <i class="bi bi-arrow-clockwise me-1"></i>
+                        Retry
+                    </button>
                 </div>
             `;
 
+            contentArea.replaceChildren(wrapper);
+
             document.getElementById('retry-module')
-                ?.addEventListener('click', () => loadModule(route));
+                ?.addEventListener('click', () => {
+                    loadModule(route);
+                });
         }
 
         // ==========================================
@@ -232,13 +265,14 @@
                 // 2. Insert HTML
                 contentArea.innerHTML = html;
 
-                // 3. Update interface
+                // 3. Update route state
+                currentRoute = route;
+
                 updateBreadcrumb(route);
                 updateActiveLink(route);
 
                 // 4. Update browser URL
                 if (updateURL) {
-
                     const url = new URL(window.location.href);
 
                     url.searchParams.set('page', route);
@@ -259,6 +293,12 @@
                 if (navigationId !== navigationCounter) {
                     return;
                 }
+
+                // 7. Notify modules that the view is ready
+                dispatchRouterEvent(
+                    'nova:pageLoaded',
+                    route
+                );
 
                 console.info(
                     `NOVA SIEM: ${route} loaded successfully.`
@@ -285,9 +325,7 @@
                 '.nav-link[data-route]'
             );
 
-            if (!link) {
-                return;
-            }
+            if (!link) return;
 
             event.preventDefault();
 
@@ -299,7 +337,6 @@
         // ==========================================
 
         window.addEventListener('popstate', () => {
-
             loadModule(getRouteFromURL(), false);
         });
 
@@ -310,14 +347,14 @@
         window.NOVA = window.NOVA || {};
 
         window.NOVA.navigate = route => {
-            loadModule(route);
+            return loadModule(route);
         };
 
         window.NOVA.reload = () => {
-            loadModule(getRouteFromURL(), false);
+            return loadModule(getRouteFromURL(), false);
         };
 
-        window.NOVA.getCurrentPage = getRouteFromURL;
+        window.NOVA.getCurrentPage = () => currentRoute;
 
         // ==========================================
         // INITIAL PAGE

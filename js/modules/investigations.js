@@ -3,42 +3,16 @@
     'use strict';
 
     // =========================================================
-    // DOM
-    // =========================================================
-
-    const incidentIdElement = document.getElementById('investigation-incident-id');
-    const incidentTitleElement = document.getElementById('investigation-incident-title');
-    const openedAtElement = document.getElementById('investigation-opened-at');
-    const leadElement = document.getElementById('investigation-lead');
-
-    const timelineBody = document.getElementById('timeline-body');
-    const factsList = document.getElementById('list-facts');
-    const inferencesList = document.getElementById('list-inferences');
-    const pendingList = document.getElementById('list-pending');
-
-    const verdictForm = document.getElementById('verdictForm');
-    const verdictDecision = document.getElementById('verdict-decision');
-    const verdictConfidence = document.getElementById('verdict-confidence');
-    const confidenceValue = document.getElementById('confidence-val');
-    const requiredAction = document.getElementById('verdict-required-action');
-    const verdictStatus = document.getElementById('verdictStatus');
-    const submitVerdictButton = document.getElementById('btn-submit-verdict');
-
-    const graphContainer = document.getElementById('cy-container');
-
-    const generateReportButton = document.getElementById(
-        'btn-generate-investigation-report'
-    );
-
-    // =========================================================
     // STATE
     // =========================================================
 
-    const incidentId = sessionStorage.getItem('nova_selected_incident_id');
-
     let currentInvestigation = null;
     let currentIncident = null;
+    let currentEvents = [];
+    let currentAlerts = [];
     let cy = null;
+
+    let isLoading = false;
 
     const notebook = {
         facts: [],
@@ -47,12 +21,14 @@
     };
 
     // =========================================================
-    // HELPERS
+    // DOM HELPERS
     // =========================================================
+
+    const getElement = id => document.getElementById(id);
 
     function translate(key, fallback) {
         return typeof window.t === 'function'
-            ? window.t(key, fallback)
+            ? window.t(key, fallback) || fallback
             : fallback;
     }
 
@@ -84,34 +60,55 @@
         element?.classList.add('d-none');
     }
 
+    function normalize(value) {
+        return String(value ?? '').trim().toUpperCase();
+    }
+
     function formatDate(value) {
         if (!value) return '--';
 
         const date = new Date(value);
 
         if (Number.isNaN(date.getTime())) {
-            return String(value);
+            return '--';
         }
 
-        const language = typeof window.getCurrentLanguage === 'function'
-            ? window.getCurrentLanguage()
-            : 'es';
+        return new Intl.DateTimeFormat(undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short'
+        }).format(date);
+    }
 
-        return new Intl.DateTimeFormat(
-            language === 'en' ? 'en-US' : 'es-CO',
-            {
-                dateStyle: 'medium',
-                timeStyle: 'short'
-            }
-        ).format(date);
+    function getIncidentId() {
+        return sessionStorage.getItem('nova_selected_incident_id');
     }
 
     function getInvestigationId() {
         return currentInvestigation?.id || null;
     }
 
-    function notebookStorageKey() {
-        return `nova_investigation_notebook_${incidentId}`;
+    // =========================================================
+    // API HELPERS
+    // =========================================================
+
+    async function getApiData(url) {
+        const response = await HttpClient.get(url);
+
+        if (!response || response.data === undefined) {
+            throw new Error('Invalid API response.');
+        }
+
+        return response.data;
+    }
+
+    function extractCollection(data) {
+        if (Array.isArray(data)) return data;
+
+        if (Array.isArray(data?.content)) {
+            return data.content;
+        }
+
+        return [];
     }
 
     // =========================================================
@@ -119,28 +116,33 @@
     // =========================================================
 
     async function loadInvestigation() {
+        const incidentId = getIncidentId();
+
         if (!incidentId) {
             showMessage(
-                graphContainer,
+                getElement('cy-container'),
                 translate(
                     'noIncidentSelected',
-                    'No incident selected. Return to Incidents and open an investigation.'
+                    'No incident selected. Return to Incidents and open a workspace.'
                 ),
                 'warning'
             );
-
             return;
         }
 
+        if (isLoading) return;
+
+        isLoading = true;
+
         try {
-            const response = await HttpClient.get(
-                ENDPOINTS.INVESTIGATIONS.BY_INCIDENT(incidentId)
+            const investigation = await getApiData(
+                ENDPOINTS.INVESTIGATIONS.BY_INCIDENT(
+                    encodeURIComponent(incidentId)
+                )
             );
 
-            const investigation = response?.data;
-
             if (!investigation?.id) {
-                throw new Error('Invalid investigation response.');
+                throw new Error('Investigation not found for this incident.');
             }
 
             currentInvestigation = investigation;
@@ -149,20 +151,20 @@
             renderInvestigation();
             loadNotebook();
             renderNotebook();
-            renderTimeline();
-            renderGraph();
+
+            await loadRelatedEvidence();
 
         } catch (error) {
             console.error('Investigation loading error:', error);
 
             showMessage(
-                graphContainer,
-                error.message || translate(
-                    'investigationLoadError',
-                    'Could not load investigation.'
-                ),
+                getElement('cy-container'),
+                error.message || 'Could not load investigation.',
                 'danger'
             );
+
+        } finally {
+            isLoading = false;
         }
     }
 
@@ -174,18 +176,18 @@
         const incident = currentIncident || {};
 
         setText(
-            incidentIdElement,
-            incident.id || incidentId
+            getElement('investigation-incident-id'),
+            incident.id || getIncidentId()
         );
 
         setText(
-            incidentTitleElement,
+            getElement('investigation-incident-title'),
             incident.title,
             translate('untitledIncident', 'Untitled incident')
         );
 
         setText(
-            openedAtElement,
+            getElement('investigation-opened-at'),
             formatDate(
                 currentInvestigation.createdAt ||
                 incident.createdAt
@@ -193,32 +195,153 @@
         );
 
         setText(
-            leadElement,
-            incident.assignedTo,
-            '--'
+            getElement('investigation-lead'),
+            incident.assignedTo
         );
 
-        // Display saved verdict information if available.
-        if (currentInvestigation.verdict) {
-            setText(
-                document.getElementById('investigation-verdict'),
-                currentInvestigation.verdict
-            );
+        setText(
+            getElement('investigation-verdict'),
+            currentInvestigation.verdict
+        );
+
+        setText(
+            getElement('investigation-confidence'),
+            currentInvestigation.confidenceScore != null
+                ? `${currentInvestigation.confidenceScore}%`
+                : '--'
+        );
+
+        setText(
+            getElement('investigation-recommended-action'),
+            currentInvestigation.recommendedAction
+        );
+    }
+
+    // =========================================================
+    // RELATED EVIDENCE
+    // =========================================================
+
+    async function loadRelatedEvidence() {
+        /*
+         * The current API configuration exposes:
+         * GET /investigations/incident/{id}
+         *
+         * This endpoint must return the investigation and its
+         * associated evidence if the backend supports that relation.
+         *
+         * We do not invent an events-by-investigation endpoint.
+         */
+
+        currentEvents = extractCollection(
+            currentInvestigation.events ||
+            currentInvestigation.evidence
+        );
+
+        currentAlerts = extractCollection(
+            currentInvestigation.alerts
+        );
+
+        renderTimeline();
+        renderEvidenceSummary();
+        renderGraph();
+    }
+
+    // =========================================================
+    // EVIDENCE ANALYSIS
+    // =========================================================
+
+    function analyzeEvidence(event) {
+        const raw = event.rawData || {};
+
+        const severity = normalize(event.severity);
+        const action = String(event.action || '').toLowerCase();
+        const description = String(
+            raw.event_description || event.eventType || ''
+        ).toLowerCase();
+
+        const findings = [];
+
+        if (severity === 'CRITICAL' || severity === 'HIGH') {
+            findings.push('High-priority security event');
         }
 
-        if (currentInvestigation.confidenceScore != null) {
-            setText(
-                document.getElementById('investigation-confidence'),
-                `${currentInvestigation.confidenceScore}%`
-            );
+        if (
+            action.includes('fail') ||
+            description.includes('failed') ||
+            description.includes('failure')
+        ) {
+            findings.push('Authentication or operation failure indicator');
         }
 
-        if (currentInvestigation.recommendedAction) {
-            setText(
-                document.getElementById('investigation-recommended-action'),
-                currentInvestigation.recommendedAction
-            );
+        if (
+            description.includes('powershell') ||
+            String(raw.process_commandline || '')
+                .toLowerCase().includes('powershell')
+        ) {
+            findings.push('PowerShell execution indicator');
         }
+
+        if (
+            description.includes('blocked') ||
+            action.includes('blocked')
+        ) {
+            findings.push('Blocking action recorded');
+        }
+
+        return findings;
+    }
+
+    function renderEvidenceSummary() {
+        const container = getElement('evidence-summary');
+
+        if (!container) return;
+
+        const critical = currentEvents.filter(
+            event => normalize(event.severity) === 'CRITICAL'
+        ).length;
+
+        const high = currentEvents.filter(
+            event => normalize(event.severity) === 'HIGH'
+        ).length;
+
+        const findings = currentEvents.reduce(
+            (total, event) => total + analyzeEvidence(event).length,
+            0
+        );
+
+        container.innerHTML = `
+            <div class="row g-3">
+
+                <div class="col-6 col-lg-3">
+                    <div class="card bg-surface border-panel p-3">
+                        <div class="text-muted small">Related events</div>
+                        <div class="fs-3 fw-bold">${currentEvents.length}</div>
+                    </div>
+                </div>
+
+                <div class="col-6 col-lg-3">
+                    <div class="card bg-surface border-panel p-3">
+                        <div class="text-muted small">Critical events</div>
+                        <div class="fs-3 fw-bold text-danger">${critical}</div>
+                    </div>
+                </div>
+
+                <div class="col-6 col-lg-3">
+                    <div class="card bg-surface border-panel p-3">
+                        <div class="text-muted small">High events</div>
+                        <div class="fs-3 fw-bold text-warning">${high}</div>
+                    </div>
+                </div>
+
+                <div class="col-6 col-lg-3">
+                    <div class="card bg-surface border-panel p-3">
+                        <div class="text-muted small">Evidence indicators</div>
+                        <div class="fs-3 fw-bold">${findings}</div>
+                    </div>
+                </div>
+
+            </div>
+        `;
     }
 
     // =========================================================
@@ -226,45 +349,77 @@
     // =========================================================
 
     function renderTimeline() {
+        const timelineBody = getElement('timeline-body');
+
         if (!timelineBody) return;
 
-        timelineBody.innerHTML = `
-            <tr>
-                <td colspan="4" class="text-center text-muted py-4">
-                    ${translate(
-                        'timelineUnavailable',
-                        'Timeline endpoint is not available in the backend yet.'
-                    )}
-                </td>
-            </tr>
-        `;
+        if (!currentEvents.length) {
+            timelineBody.innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-4">
+                        ${translate(
+                            'noEvidenceAvailable',
+                            'No related event evidence is available.'
+                        )}
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        const sortedEvents = [...currentEvents].sort(
+            (a, b) =>
+                new Date(a.timestamp || 0) -
+                new Date(b.timestamp || 0)
+        );
+
+        timelineBody.innerHTML = sortedEvents.map(event => {
+            const findings = analyzeEvidence(event);
+
+            return `
+                <tr>
+                    <td>${escapeHTML(formatDate(event.timestamp))}</td>
+
+                    <td>${escapeHTML(event.eventType || '--')}</td>
+
+                    <td>${escapeHTML(event.action || '--')}</td>
+
+                    <td>
+                        <span class="badge bg-secondary">
+                            ${escapeHTML(normalize(event.severity) || '--')}
+                        </span>
+                    </td>
+
+                    <td>
+                        ${escapeHTML(findings.join(', ') || '--')}
+                    </td>
+                </tr>
+            `;
+        }).join('');
     }
 
     // =========================================================
-    // GRAPH
+    // RELATIONSHIP GRAPH
     // =========================================================
 
     function renderGraph() {
-        if (!graphContainer) return;
+        const container = getElement('cy-container');
 
-        const incident = currentIncident;
+        if (!container) return;
 
-        if (!incident?.id || !currentInvestigation?.id) {
-            graphContainer.innerHTML = `
+        if (typeof window.cytoscape !== 'function') {
+            container.innerHTML = `
                 <div class="text-center text-muted p-4">
-                    ${translate(
-                        'noGraphData',
-                        'Relationship data is not available.'
-                    )}
+                    Cytoscape.js is not loaded.
                 </div>
             `;
             return;
         }
 
-        if (typeof cytoscape !== 'function') {
-            graphContainer.innerHTML = `
+        if (!currentIncident?.id) {
+            container.innerHTML = `
                 <div class="text-center text-muted p-4">
-                    Cytoscape.js is not loaded.
+                    No incident data available.
                 </div>
             `;
             return;
@@ -275,41 +430,64 @@
             cy = null;
         }
 
-        /*
-         * These are the two relationships directly established
-         * by the actual entity relationship:
-         * Incident -> Investigation.
-         *
-         * This is not a threat intelligence graph.
-         */
-
-        graphContainer.innerHTML = '';
-
-        cy = cytoscape({
-            container: graphContainer,
-
-            elements: [
-                {
-                    data: {
-                        id: incident.id,
-                        label: incident.title || 'Incident'
-                    }
-                },
-                {
-                    data: {
-                        id: currentInvestigation.id,
-                        label: 'Investigation Workspace'
-                    }
-                },
-                {
-                    data: {
-                        id: 'incident-investigation',
-                        source: incident.id,
-                        target: currentInvestigation.id,
-                        label: 'HAS_WORKSPACE'
-                    }
+        const elements = [
+            {
+                data: {
+                    id: `incident-${currentIncident.id}`,
+                    label: currentIncident.title || 'Incident',
+                    type: 'incident'
                 }
-            ],
+            }
+        ];
+
+        const edges = [];
+
+        currentAlerts.forEach((alert, index) => {
+            const alertId = `alert-${alert.id || index}`;
+
+            elements.push({
+                data: {
+                    id: alertId,
+                    label: alert.ruleTriggered || 'Security alert',
+                    type: 'alert'
+                }
+            });
+
+            edges.push({
+                data: {
+                    id: `edge-alert-${index}`,
+                    source: `incident-${currentIncident.id}`,
+                    target: alertId,
+                    label: 'RELATED'
+                }
+            });
+        });
+
+        currentEvents.forEach((event, index) => {
+            const eventId = `event-${event.id || index}`;
+
+            elements.push({
+                data: {
+                    id: eventId,
+                    label: event.eventType || 'Security event',
+                    type: 'event'
+                }
+            });
+
+            edges.push({
+                data: {
+                    id: `edge-event-${index}`,
+                    source: `incident-${currentIncident.id}`,
+                    target: eventId,
+                    label: 'EVIDENCE'
+                }
+            });
+        });
+
+        cy = window.cytoscape({
+            container,
+
+            elements: [...elements, ...edges],
 
             style: [
                 {
@@ -318,14 +496,36 @@
                         'label': 'data(label)',
                         'background-color': '#087F7C',
                         'color': '#F8FAFC',
-                        'font-size': '11px',
+                        'font-size': '10px',
+                        'text-wrap': 'wrap',
+                        'text-max-width': 100,
                         'text-valign': 'bottom',
                         'text-halign': 'center',
                         'text-margin-y': 8,
-                        'width': 45,
-                        'height': 45,
+                        'width': 40,
+                        'height': 40,
                         'border-width': 2,
                         'border-color': '#DFE8EC'
+                    }
+                },
+                {
+                    selector: 'node[type="incident"]',
+                    style: {
+                        'background-color': '#EF4444',
+                        'width': 55,
+                        'height': 55
+                    }
+                },
+                {
+                    selector: 'node[type="alert"]',
+                    style: {
+                        'background-color': '#F97316'
+                    }
+                },
+                {
+                    selector: 'node[type="event"]',
+                    style: {
+                        'background-color': '#087F7C'
                     }
                 },
                 {
@@ -337,65 +537,76 @@
                         'target-arrow-shape': 'triangle',
                         'curve-style': 'bezier',
                         'label': 'data(label)',
-                        'font-size': '9px',
+                        'font-size': '8px',
                         'color': '#CBD5E1'
                     }
                 }
             ],
 
             layout: {
-                name: 'grid',
+                name: 'cose',
                 animate: true,
                 padding: 30
             }
         });
     }
 
-    document.getElementById('btn-layout-cose')
-        ?.addEventListener('click', () => {
-            cy?.layout({
-                name: 'cose',
-                animate: true
-            }).run();
-        });
+    // =========================================================
+    // GRAPH LAYOUT
+    // =========================================================
 
-    document.getElementById('btn-layout-grid')
-        ?.addEventListener('click', () => {
-            cy?.layout({
-                name: 'grid',
-                animate: true
-            }).run();
-        });
+    function changeGraphLayout(name) {
+        if (!cy) return;
+
+        cy.layout({
+            name,
+            animate: true,
+            padding: 30
+        }).run();
+    }
 
     // =========================================================
     // NOTEBOOK
     // =========================================================
 
+    function notebookStorageKey() {
+        return `nova_investigation_notebook_${getIncidentId()}`;
+    }
+
     function loadNotebook() {
-        // First load the real values returned by the backend.
-        notebook.facts = currentInvestigation.factsNotebook || [];
-        notebook.inferences = currentInvestigation.inferencesNotebook || [];
-        notebook.pending = currentInvestigation.pendingNotebook || [];
+        notebook.facts = Array.isArray(
+            currentInvestigation.factsNotebook
+        )
+            ? currentInvestigation.factsNotebook
+            : [];
 
-        // Then restore local edits made in this browser.
+        notebook.inferences = Array.isArray(
+            currentInvestigation.inferencesNotebook
+        )
+            ? currentInvestigation.inferencesNotebook
+            : [];
+
+        notebook.pending = Array.isArray(
+            currentInvestigation.pendingNotebook
+        )
+            ? currentInvestigation.pendingNotebook
+            : [];
+
         try {
-            const saved = localStorage.getItem(notebookStorageKey());
+            const saved = localStorage.getItem(
+                notebookStorageKey()
+            );
 
-            if (saved) {
-                const localNotebook = JSON.parse(saved);
+            if (!saved) return;
 
-                notebook.facts = Array.isArray(localNotebook.facts)
-                    ? localNotebook.facts
-                    : notebook.facts;
+            const local = JSON.parse(saved);
 
-                notebook.inferences = Array.isArray(localNotebook.inferences)
-                    ? localNotebook.inferences
-                    : notebook.inferences;
-
-                notebook.pending = Array.isArray(localNotebook.pending)
-                    ? localNotebook.pending
-                    : notebook.pending;
+            for (const key of Object.keys(notebook)) {
+                if (Array.isArray(local[key])) {
+                    notebook[key] = local[key];
+                }
             }
+
         } catch (error) {
             console.error('Notebook loading error:', error);
         }
@@ -417,7 +628,7 @@
 
         element.innerHTML = '';
 
-        if (entries.length === 0) {
+        if (!entries.length) {
             element.innerHTML = `
                 <li class="text-muted small">
                     ${translate('noNotebookEntries', 'No entries yet.')}
@@ -438,8 +649,7 @@
                 <button type="button"
                         class="btn btn-sm btn-link text-danger p-0"
                         data-notebook-type="${type}"
-                        data-notebook-index="${index}"
-                        aria-label="${translate('deleteEntry', 'Delete entry')}">
+                        data-notebook-index="${index}">
                     <i class="bi bi-trash"></i>
                 </button>
             `;
@@ -449,65 +659,57 @@
     }
 
     function renderNotebook() {
-        renderNotebookList(factsList, notebook.facts, 'facts');
-        renderNotebookList(inferencesList, notebook.inferences, 'inferences');
-        renderNotebookList(pendingList, notebook.pending, 'pending');
+        renderNotebookList(
+            getElement('list-facts'),
+            notebook.facts,
+            'facts'
+        );
+
+        renderNotebookList(
+            getElement('list-inferences'),
+            notebook.inferences,
+            'inferences'
+        );
+
+        renderNotebookList(
+            getElement('list-pending'),
+            notebook.pending,
+            'pending'
+        );
     }
 
-    window.addNotebookEntry = function (type) {
+    function addNotebookEntry(type) {
         const types = {
             fact: 'facts',
             inference: 'inferences',
             pending: 'pending'
         };
 
-        const notebookType = types[type];
+        const target = types[type];
 
-        if (!notebookType) return;
+        if (!target) return;
 
         const prompts = {
-            fact: translate('enterFact', 'Enter an observed fact:'),
-            inference: translate('enterInference', 'Enter an inference:'),
-            pending: translate('enterPending', 'Enter a pending action:')
+            fact: 'Enter an observed fact:',
+            inference: 'Enter an inference:',
+            pending: 'Enter a pending action:'
         };
 
-        const value = window.prompt(prompts[type]);
+        const value = window.prompt(
+            translate(type, prompts[type])
+        );
 
         if (!value?.trim()) return;
 
-        notebook[notebookType].push(value.trim());
+        notebook[target].push(value.trim());
 
         saveNotebook();
         renderNotebook();
-    };
-
-    document.addEventListener('click', event => {
-        const button = event.target.closest('[data-notebook-type]');
-
-        if (!button) return;
-
-        const type = button.dataset.notebookType;
-        const index = Number(button.dataset.notebookIndex);
-
-        if (!Array.isArray(notebook[type])) return;
-        if (!Number.isInteger(index) || index < 0) return;
-
-        notebook[type].splice(index, 1);
-
-        saveNotebook();
-        renderNotebook();
-    });
+    }
 
     // =========================================================
     // VERDICT
     // =========================================================
-
-    if (verdictConfidence && confidenceValue) {
-        verdictConfidence.addEventListener('input', () => {
-            confidenceValue.textContent =
-                `${verdictConfidence.value}%`;
-        });
-    }
 
     async function submitVerdict(event) {
         event.preventDefault();
@@ -516,16 +718,22 @@
 
         if (!investigationId) {
             showMessage(
-                verdictStatus,
+                getElement('verdictStatus'),
                 'Investigation ID is missing.',
                 'danger'
             );
             return;
         }
 
-        const verdict = verdictDecision.value;
-        const confidenceScore = Number(verdictConfidence.value);
-        const recommendedAction = requiredAction?.value.trim();
+        const verdict = getElement('verdict-decision')?.value;
+
+        const confidenceScore = Number(
+            getElement('verdict-confidence')?.value
+        );
+
+        const recommendedAction = getElement(
+            'verdict-required-action'
+        )?.value.trim();
 
         const validVerdicts = [
             'TRUE_POSITIVE_CONFIRMED',
@@ -536,19 +744,21 @@
 
         if (!validVerdicts.includes(verdict)) {
             showMessage(
-                verdictStatus,
-                translate('invalidVerdict', 'Select a valid verdict.'),
+                getElement('verdictStatus'),
+                'Select a valid verdict.',
                 'warning'
             );
             return;
         }
 
-        if (!Number.isInteger(confidenceScore) ||
+        if (
+            !Number.isInteger(confidenceScore) ||
             confidenceScore < 0 ||
-            confidenceScore > 100) {
+            confidenceScore > 100
+        ) {
             showMessage(
-                verdictStatus,
-                translate('invalidConfidence', 'Confidence must be between 0 and 100.'),
+                getElement('verdictStatus'),
+                'Confidence must be between 0 and 100.',
                 'warning'
             );
             return;
@@ -556,8 +766,8 @@
 
         if (!recommendedAction) {
             showMessage(
-                verdictStatus,
-                translate('actionRequired', 'Recommended action is required.'),
+                getElement('verdictStatus'),
+                'Recommended action is required.',
                 'warning'
             );
             return;
@@ -569,72 +779,67 @@
             recommendedAction
         };
 
-        submitVerdictButton.disabled = true;
-        hideMessage(verdictStatus);
+        const button = getElement('btn-submit-verdict');
+
+        if (button) button.disabled = true;
+
+        hideMessage(getElement('verdictStatus'));
 
         try {
             const response = await HttpClient.post(
-                ENDPOINTS.INVESTIGATIONS.SUBMIT_VERDICT(investigationId),
+                ENDPOINTS.INVESTIGATIONS.SUBMIT_VERDICT(
+                    investigationId
+                ),
                 payload
             );
 
-            const updatedInvestigation = response?.data;
-
-            if (!updatedInvestigation?.id) {
+            if (!response?.data?.id) {
                 throw new Error('Invalid verdict response.');
             }
 
-            currentInvestigation = updatedInvestigation;
-            currentIncident = updatedInvestigation.incident || currentIncident;
+            currentInvestigation = response.data;
+            currentIncident =
+                response.data.incident || currentIncident;
 
             renderInvestigation();
 
             showMessage(
-                verdictStatus,
-                translate(
-                    'verdictSubmitted',
-                    'Verdict submitted successfully.'
-                ),
+                getElement('verdictStatus'),
+                'Verdict submitted successfully.',
                 'success'
             );
-
-            const modalElement = document.getElementById('verdictModal');
-            const modal = modalElement
-                ? bootstrap.Modal.getInstance(modalElement)
-                : null;
-
-            modal?.hide();
 
         } catch (error) {
             console.error('Verdict submission error:', error);
 
             showMessage(
-                verdictStatus,
-                error.message || translate(
-                    'verdictSubmitError',
-                    'Could not submit verdict.'
-                ),
+                getElement('verdictStatus'),
+                error.message || 'Could not submit verdict.',
                 'danger'
             );
 
         } finally {
-            submitVerdictButton.disabled = false;
+            if (button) button.disabled = false;
         }
     }
 
-    verdictForm?.addEventListener('submit', submitVerdict);
-
     // =========================================================
-    // GENERATE INCIDENT REPORT
+    // REPORT
     // =========================================================
 
     async function generateIncidentReport() {
+        const incidentId = getIncidentId();
+
         if (!incidentId) {
             window.alert('No incident selected.');
             return;
         }
 
-        generateReportButton.disabled = true;
+        const button = getElement(
+            'btn-generate-investigation-report'
+        );
+
+        if (button) button.disabled = true;
 
         try {
             const response = await HttpClient.post(
@@ -646,15 +851,11 @@
                 }
             );
 
-            const report = response?.data;
-
-            if (!report?.reportId) {
+            if (!response?.data) {
                 throw new Error('Invalid report response.');
             }
 
-            window.alert(
-                `${translate('reportGenerated', 'Report generated')}: ${report.reportId}`
-            );
+            window.alert('Report request completed successfully.');
 
         } catch (error) {
             console.error('Report generation error:', error);
@@ -664,38 +865,85 @@
             );
 
         } finally {
-            generateReportButton.disabled = false;
+            if (button) button.disabled = false;
         }
     }
 
-    generateReportButton?.addEventListener(
-        'click',
-        generateIncidentReport
+    // =========================================================
+    // EVENT LISTENERS
+    // =========================================================
+
+    document.addEventListener('click', event => {
+        if (event.target.closest('#btn-layout-cose')) {
+            changeGraphLayout('cose');
+        }
+
+        if (event.target.closest('#btn-layout-grid')) {
+            changeGraphLayout('grid');
+        }
+
+        const addButton = event.target.closest('[data-add-notebook]');
+
+        if (addButton) {
+            addNotebookEntry(addButton.dataset.addNotebook);
+        }
+
+        const deleteButton = event.target.closest(
+            '[data-notebook-type]'
+        );
+
+        if (deleteButton) {
+            const type = deleteButton.dataset.notebookType;
+            const index = Number(deleteButton.dataset.notebookIndex);
+
+            if (!Array.isArray(notebook[type])) return;
+            if (!Number.isInteger(index) || index < 0) return;
+
+            notebook[type].splice(index, 1);
+
+            saveNotebook();
+            renderNotebook();
+        }
+    });
+
+    getElement('verdictForm')
+        ?.addEventListener('submit', submitVerdict);
+
+    getElement('verdict-confidence')
+        ?.addEventListener('input', event => {
+            setText(
+                getElement('confidence-val'),
+                `${event.target.value}%`
+            );
+        });
+
+    getElement('btn-generate-investigation-report')
+        ?.addEventListener('click', generateIncidentReport);
+
+    document.addEventListener(
+        'nova:languageChanged',
+        () => {
+            renderInvestigation();
+            renderTimeline();
+            renderEvidenceSummary();
+            renderNotebook();
+        }
     );
 
     // =========================================================
-    // LANGUAGE
+    // PUBLIC API
     // =========================================================
 
-    document.addEventListener('nova:languageChanged', () => {
-        renderNotebook();
-        renderTimeline();
-
-        if (cy) {
-            cy.resize();
-        }
-    });
+    window.loadInvestigation = loadInvestigation;
+    window.renderInvestigation = renderInvestigation;
+    window.renderInvestigationTimeline = renderTimeline;
+    window.renderInvestigationGraph = renderGraph;
+    window.addNotebookEntry = addNotebookEntry;
 
     // =========================================================
     // INITIALIZATION
     // =========================================================
 
-    if (!incidentId) {
-        console.warn(
-            'No selected incident. Expected sessionStorage key: nova_selected_incident_id'
-        );
-    } else {
-        loadInvestigation();
-    }
+    loadInvestigation();
 
 })();

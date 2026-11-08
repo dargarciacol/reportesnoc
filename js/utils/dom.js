@@ -1,5 +1,10 @@
 
 const DOMUtils = {
+
+    // =========================================================
+    // CREATE ELEMENT
+    // =========================================================
+
     createElement: (tag, className = '', innerHTML = '') => {
         const el = document.createElement(tag);
 
@@ -14,8 +19,15 @@ const DOMUtils = {
         return el;
     },
 
+    // =========================================================
+    // TOAST NOTIFICATIONS
+    // =========================================================
+
     showToast: (message, type = 'info') => {
-        let toastContainer = document.getElementById('nova-toast-container');
+
+        let toastContainer = document.getElementById(
+            'nova-toast-container'
+        );
 
         if (!toastContainer) {
             toastContainer = DOMUtils.createElement(
@@ -34,14 +46,17 @@ const DOMUtils = {
                 bg: 'rgba(34, 197, 94, 0.9)',
                 border: '#22C55E'
             },
+
             danger: {
                 bg: 'rgba(239, 68, 68, 0.9)',
                 border: '#EF4444'
             },
+
             info: {
                 bg: 'rgba(6, 182, 212, 0.9)',
                 border: '#06B6D4'
             },
+
             warning: {
                 bg: 'rgba(234, 179, 8, 0.9)',
                 border: '#EAB308'
@@ -62,42 +77,81 @@ const DOMUtils = {
         toastEl.setAttribute('aria-live', 'assertive');
         toastEl.setAttribute('aria-atomic', 'true');
 
+        // Wrapper
         const wrapper = document.createElement('div');
         wrapper.className = 'd-flex';
 
+        // Message
         const body = document.createElement('div');
         body.className = 'toast-body fw-semibold';
 
-        // El mensaje se inserta como texto para evitar interpretar HTML.
-        body.textContent = String(message);
+        // Insert as text to prevent HTML injection.
+        body.textContent = String(message ?? '');
 
+        // Close button
         const closeButton = document.createElement('button');
+
         closeButton.type = 'button';
-        closeButton.className = 'btn-close btn-close-white me-2 m-auto';
-        closeButton.setAttribute('data-bs-dismiss', 'toast');
-        closeButton.setAttribute('aria-label',
-            typeof window.t === 'function'
-                ? window.t('close', 'Close')
-                : 'Close'
-        );
+        closeButton.className =
+            'btn-close btn-close-white me-2 m-auto';
+
+        closeButton.setAttribute('aria-label', getTranslation('close', 'Close'));
 
         wrapper.appendChild(body);
         wrapper.appendChild(closeButton);
-        toastEl.appendChild(wrapper);
 
+        toastEl.appendChild(wrapper);
         toastContainer.appendChild(toastEl);
 
-        const bsToast = new bootstrap.Toast(toastEl, {
-            autohide: true,
-            delay: 3500
-        });
+        // Bootstrap integration with fallback.
+        if (
+            window.bootstrap &&
+            typeof window.bootstrap.Toast === 'function'
+        ) {
+            const bsToast = new window.bootstrap.Toast(toastEl, {
+                autohide: true,
+                delay: 3500
+            });
 
-        bsToast.show();
+            closeButton.addEventListener('click', () => {
+                bsToast.hide();
+            });
 
-        toastEl.addEventListener('hidden.bs.toast', () => {
-            toastEl.remove();
-        });
+            toastEl.addEventListener(
+                'hidden.bs.toast',
+                () => toastEl.remove(),
+                { once: true }
+            );
+
+            bsToast.show();
+
+        } else {
+            // Fallback if Bootstrap JS is unavailable.
+            toastEl.classList.add('show');
+
+            closeButton.addEventListener('click', () => {
+                toastEl.remove();
+            });
+
+            window.setTimeout(() => {
+                toastEl.remove();
+            }, 3500);
+        }
     }
 };
+
+// =========================================================
+// TRANSLATION HELPER
+// =========================================================
+
+function getTranslation(key, fallback) {
+    return typeof window.t === 'function'
+        ? window.t(key, fallback) || fallback
+        : fallback;
+}
+
+// =========================================================
+// GLOBAL EXPORT
+// =========================================================
 
 window.DOMUtils = DOMUtils;

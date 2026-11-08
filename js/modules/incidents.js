@@ -1,12 +1,10 @@
 
 (function () {
-    const incidentsContainer = document.getElementById('incidents-container');
-    const formCreateIncident = document.getElementById('createIncidentForm');
+    'use strict';
 
-    const searchInput = document.getElementById('search-incidents');
-    const severityFilter = document.getElementById('filter-severity-inc');
-    const statusFilter = document.getElementById('filter-status-inc');
-    const myIncidentsButton = document.getElementById('btn-my-incidents');
+    // ==========================================
+    // STATE
+    // ==========================================
 
     let incidents = [];
     let isLoading = false;
@@ -27,9 +25,17 @@
         CLOSED: 100
     };
 
+    // ==========================================
+    // UTILITIES
+    // ==========================================
+
+    function getElement(id) {
+        return document.getElementById(id);
+    }
+
     function t(key, fallback) {
         return typeof window.t === 'function'
-            ? window.t(key, fallback)
+            ? window.t(key, fallback) || fallback
             : fallback;
     }
 
@@ -44,7 +50,20 @@
     }
 
     function normalizeValue(value) {
-        return String(value || '').toUpperCase();
+        return String(value ?? '').trim().toUpperCase();
+    }
+
+    function formatDate(value) {
+        if (!value) return '--';
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) return '--';
+
+        return new Intl.DateTimeFormat(undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short'
+        }).format(date);
     }
 
     function translateStatus(status) {
@@ -58,7 +77,7 @@
             CLOSED: 'closed'
         };
 
-        return t(keys[value], value);
+        return t(keys[value], value || '--');
     }
 
     function translateSeverity(severity) {
@@ -71,21 +90,12 @@
             LOW: 'low'
         };
 
-        return t(keys[value], value);
+        return t(keys[value], value || '--');
     }
 
-    function formatDate(dateValue) {
-        if (!dateValue) return '--';
-
-        const date = new Date(dateValue);
-
-        if (Number.isNaN(date.getTime())) return '--';
-
-        return new Intl.DateTimeFormat(undefined, {
-            dateStyle: 'medium',
-            timeStyle: 'short'
-        }).format(date);
-    }
+    // ==========================================
+    // CURRENT USER
+    // ==========================================
 
     function getCurrentUsername() {
         try {
@@ -96,42 +106,74 @@
             const user = JSON.parse(storedUser);
 
             return user?.username || null;
+
         } catch (error) {
             console.error('Unable to read current user:', error);
             return null;
         }
     }
 
+    // ==========================================
+    // INCIDENT NORMALIZATION
+    // ==========================================
+
+    function normalizeIncident(incident) {
+        return {
+            ...incident,
+            id: incident.id,
+            title: incident.title || 'Untitled incident',
+            description: incident.description || '',
+            severity: normalizeValue(incident.severity),
+            status: normalizeValue(incident.status),
+            primaryHypothesis: incident.primaryHypothesis || '--',
+            assignedTo: incident.assignedTo || null,
+            createdAt: incident.createdAt || null
+        };
+    }
+
+    // ==========================================
+    // FILTERS
+    // ==========================================
+
     function getFilteredIncidents() {
-        const search = searchInput?.value.trim().toLowerCase() || '';
-        const severity = normalizeValue(severityFilter?.value);
-        const status = normalizeValue(statusFilter?.value);
+        const search = getElement('search-incidents')
+            ?.value.trim().toLowerCase() || '';
+
+        const severity = normalizeValue(
+            getElement('filter-severity-inc')?.value
+        );
+
+        const status = normalizeValue(
+            getElement('filter-status-inc')?.value
+        );
 
         const username = getCurrentUsername();
 
         return incidents.filter(incident => {
             const id = String(incident.id || '').toLowerCase();
             const title = String(incident.title || '').toLowerCase();
+            const description = String(
+                incident.description || ''
+            ).toLowerCase();
 
             const matchesSearch =
                 !search ||
                 id.includes(search) ||
-                title.includes(search);
+                title.includes(search) ||
+                description.includes(search);
 
             const matchesSeverity =
-                !severity ||
-                normalizeValue(incident.severity) === severity;
+                !severity || incident.severity === severity;
 
             const matchesStatus =
-                !status ||
-                normalizeValue(incident.status) === status;
+                !status || incident.status === status;
 
             const matchesMyIncidents =
                 !showMyIncidents ||
                 (
                     username &&
                     incident.assignedTo === username &&
-                    normalizeValue(incident.status) !== 'CLOSED'
+                    incident.status !== 'CLOSED'
                 );
 
             return (
@@ -143,10 +185,16 @@
         });
     }
 
-    function renderLoading() {
-        if (!incidentsContainer) return;
+    // ==========================================
+    // LOADING / ERROR / EMPTY
+    // ==========================================
 
-        incidentsContainer.innerHTML = `
+    function renderLoading() {
+        const container = getElement('incidents-container');
+
+        if (!container) return;
+
+        container.innerHTML = `
             <div class="col-12 text-center text-muted py-5">
                 <div class="spinner-border spinner-border-sm me-2"
                      role="status"></div>
@@ -156,13 +204,16 @@
     }
 
     function renderError(message) {
-        if (!incidentsContainer) return;
+        const container = getElement('incidents-container');
 
-        incidentsContainer.innerHTML = `
+        if (!container) return;
+
+        container.innerHTML = `
             <div class="col-12">
                 <div class="alert alert-danger" role="alert">
                     <i class="bi bi-exclamation-triangle me-2"></i>
                     ${escapeHtml(message)}
+
                     <button class="btn btn-sm btn-outline-danger ms-3"
                             type="button"
                             id="retry-incidents">
@@ -171,49 +222,62 @@
                 </div>
             </div>
         `;
-
-        document.getElementById('retry-incidents')
-            ?.addEventListener('click', loadIncidents);
     }
 
     function renderEmpty() {
-        if (!incidentsContainer) return;
+        const container = getElement('incidents-container');
 
-        incidentsContainer.innerHTML = `
+        if (!container) return;
+
+        container.innerHTML = `
             <div class="col-12 text-center text-muted py-5">
                 <i class="bi bi-shield-check fs-1 d-block mb-3"></i>
-                ${t('noIncidentsFound', 'No incidents found.')}
+
+                <h6>${t('noIncidentsFound', 'No incidents found.')}</h6>
+
+                <p class="small mb-0">
+                    ${t(
+                        'incidentsWillAppear',
+                        'Incidents will appear here when they are created by the security workflow.'
+                    )}
+                </p>
             </div>
         `;
     }
 
+    // ==========================================
+    // INCIDENT CARDS
+    // ==========================================
+
     function renderIncidents() {
-        if (!incidentsContainer) return;
+        const container = getElement('incidents-container');
+
+        if (!container) return;
 
         const filteredIncidents = getFilteredIncidents();
 
-        incidentsContainer.innerHTML = '';
+        container.innerHTML = '';
 
-        if (filteredIncidents.length === 0) {
+        if (!filteredIncidents.length) {
             renderEmpty();
             return;
         }
 
         filteredIncidents.forEach(incident => {
-            const severity = normalizeValue(incident.severity);
-            const status = normalizeValue(incident.status);
+            const severity = incident.severity;
+            const status = incident.status;
 
-            const color = severityColors[severity] || '#94A3B8';
-            const progress = statusProgress[status] ?? 10;
+            const color =
+                severityColors[severity] || '#94A3B8';
 
-            const hypothesis = incident.primaryHypothesis || '--';
-            const assignee = incident.assignedTo || null;
+            const progress =
+                statusProgress[status] ?? 10;
 
-            const assigneeHTML = assignee
+            const assigneeHTML = incident.assignedTo
                 ? `
                     <i class="bi bi-person-check-fill me-1"
-                       style="color: var(--primary);"></i>
-                    ${escapeHtml(assignee)}
+                       style="color:var(--primary);"></i>
+                    ${escapeHtml(incident.assignedTo)}
                 `
                 : `
                     <span class="text-warning">
@@ -222,124 +286,144 @@
                     </span>
                 `;
 
-            const cardHtml = `
-                <div class="col-md-6 col-lg-4 mb-4">
-                    <div class="card bg-surface border-panel h-100 rounded-3 position-relative overflow-hidden">
+            const card = document.createElement('div');
 
-                        <div style="
-                            position: absolute;
-                            top: 0;
-                            left: 0;
-                            width: 4px;
-                            height: 100%;
-                            background-color: ${color};
-                        "></div>
+            card.className = 'col-md-6 col-lg-4 mb-4';
 
-                        <div class="card-body ps-4">
+            card.innerHTML = `
+                <div class="card bg-surface border-panel h-100 rounded-3
+                            position-relative overflow-hidden">
 
-                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                <span class="badge"
-                                      style="
-                                        background-color: ${color}20;
-                                        color: ${color};
-                                        border: 1px solid ${color};
-                                      ">
-                                    ${escapeHtml(incident.id)}
-                                </span>
+                    <div style="
+                        position:absolute;
+                        top:0;
+                        left:0;
+                        width:4px;
+                        height:100%;
+                        background:${color};
+                    "></div>
 
-                                <span class="badge bg-secondary">
-                                    ${escapeHtml(translateStatus(status))}
-                                </span>
+                    <div class="card-body ps-4">
+
+                        <div class="d-flex justify-content-between
+                                    align-items-start mb-2">
+
+                            <span class="badge"
+                                  style="
+                                    background:${color}20;
+                                    color:${color};
+                                    border:1px solid ${color};
+                                  ">
+                                ${escapeHtml(incident.id)}
+                            </span>
+
+                            <span class="badge bg-secondary">
+                                ${escapeHtml(translateStatus(status))}
+                            </span>
+
+                        </div>
+
+                        <h5 class="card-title text-main fs-6 fw-bold mb-3">
+                            ${escapeHtml(incident.title)}
+                        </h5>
+
+                        <p class="text-muted small mb-3"
+                           style="
+                             min-height:32px;
+                             display:-webkit-box;
+                             -webkit-line-clamp:2;
+                             -webkit-box-orient:vertical;
+                             overflow:hidden;
+                           ">
+                            <i class="bi bi-lightning-charge me-1"></i>
+                            ${escapeHtml(incident.primaryHypothesis)}
+                        </p>
+
+                        <div class="mb-3">
+                            <span class="badge"
+                                  style="
+                                    background:${color}20;
+                                    color:${color};
+                                    border:1px solid ${color};
+                                  ">
+                                ${escapeHtml(translateSeverity(severity))}
+                            </span>
+                        </div>
+
+                        <div class="text-muted small mb-3">
+
+                            <div class="mb-2">
+                                <i class="bi bi-calendar3 me-1"></i>
+                                ${escapeHtml(formatDate(incident.createdAt))}
                             </div>
 
-                            <h5 class="card-title text-main fs-6 fw-bold mb-3"
-                                style="min-height: 40px;">
-                                ${escapeHtml(incident.title)}
-                            </h5>
-
-                            <p class="text-muted small mb-3"
-                               style="
-                                 min-height: 32px;
-                                 display: -webkit-box;
-                                 -webkit-line-clamp: 2;
-                                 -webkit-box-orient: vertical;
-                                 overflow: hidden;
-                               ">
-                                <i class="bi bi-lightning-charge me-1"></i>
-                                ${escapeHtml(hypothesis)}
-                            </p>
-
-                            <div class="mb-3">
-                                <span class="badge"
-                                      style="
-                                        background-color: ${color}20;
-                                        color: ${color};
-                                        border: 1px solid ${color};
-                                      ">
-                                    ${escapeHtml(translateSeverity(severity))}
-                                </span>
+                            <div>
+                                <i class="bi bi-person me-1"></i>
+                                ${assigneeHTML}
                             </div>
 
-                            <div class="text-muted small mb-3">
-                                <div class="mb-2">
-                                    <i class="bi bi-calendar3 me-1"></i>
-                                    ${escapeHtml(formatDate(incident.createdAt))}
-                                </div>
+                        </div>
 
-                                <div>
-                                    <i class="bi bi-person me-1"></i>
-                                    ${assigneeHTML}
-                                </div>
-                            </div>
+                        <div class="mb-3">
 
-                            <div class="mb-3">
-                                <div class="d-flex justify-content-between text-muted small mb-1">
-                                    <span>
-                                        ${t('lifecycleProgress', 'Lifecycle Progress')}
-                                    </span>
-                                    <span>${progress}%</span>
-                                </div>
+                            <div class="d-flex justify-content-between
+                                        text-muted small mb-1">
 
-                                <div class="progress"
-                                     style="height: 4px; background-color: var(--bg-main);">
-
-                                    <div class="progress-bar"
-                                         role="progressbar"
-                                         style="
-                                            width: ${progress}%;
-                                            background-color: ${color};
-                                         "
-                                         aria-valuenow="${progress}"
-                                         aria-valuemin="0"
-                                         aria-valuemax="100">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top border-panel">
-
-                                <span class="text-muted small">
-                                    ${escapeHtml(incident.description || '')}
+                                <span>
+                                    ${t('lifecycleProgress', 'Lifecycle Progress')}
                                 </span>
 
-                                <button class="btn btn-sm btn-outline-info"
-                                        type="button"
-                                        data-investigation-id="${escapeHtml(incident.id)}">
+                                <span>${progress}%</span>
 
-                                    ${t('workspace', 'Workspace')}
-                                    <i class="bi bi-arrow-right ms-1"></i>
-                                </button>
+                            </div>
+
+                            <div class="progress"
+                                 style="height:4px;background:var(--bg-main);">
+
+                                <div class="progress-bar"
+                                     role="progressbar"
+                                     style="
+                                        width:${progress}%;
+                                        background:${color};
+                                     "
+                                     aria-valuenow="${progress}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                </div>
 
                             </div>
 
                         </div>
+
+                        <div class="border-top border-panel pt-3 mt-3">
+
+                            <p class="text-muted small">
+                                ${escapeHtml(incident.description)}
+                            </p>
+
+                            <button
+                                class="btn btn-sm btn-outline-info w-100"
+                                type="button"
+                                data-investigation-id="${escapeHtml(incident.id)}">
+
+                                ${t('workspace', 'Workspace')}
+                                <i class="bi bi-arrow-right ms-1"></i>
+
+                            </button>
+
+                        </div>
+
                     </div>
                 </div>
             `;
 
-            incidentsContainer.insertAdjacentHTML('beforeend', cardHtml);
+            container.appendChild(card);
         });
     }
+
+    // ==========================================
+    // LOAD INCIDENTS FROM BACKEND
+    // ==========================================
 
     async function loadIncidents() {
         if (isLoading) return;
@@ -352,14 +436,23 @@
                 ENDPOINTS.INCIDENTS.LIST
             );
 
-            if (!response?.data ||
-                !Array.isArray(response.data.content)) {
-                throw new Error('Unexpected incidents response.');
+            if (!response || !response.data) {
+                throw new Error('Invalid incidents response.');
             }
 
-            incidents = response.data.content;
+            const data = response.data;
 
-            renderIncidents();
+            const content = Array.isArray(data)
+                ? data
+                : data.content;
+
+            if (!Array.isArray(content)) {
+                throw new Error(
+                    'The backend did not return a valid incidents list.'
+                );
+            }
+
+            incidents = content.map(normalizeIncident);
 
         } catch (error) {
             console.error('Error loading incidents:', error);
@@ -368,34 +461,54 @@
                 error.message || 'Unable to load incidents.'
             );
 
+            return;
+
         } finally {
             isLoading = false;
         }
+
+        renderIncidents();
     }
+
+    // ==========================================
+    // CREATE INCIDENT
+    // ==========================================
 
     async function createIncident(event) {
         event.preventDefault();
 
-        const title = document.getElementById('incidentTitle')?.value.trim();
-        const severity = document.getElementById('incidentSeverity')?.value;
+        const form = getElement('createIncidentForm');
+
+        if (!form) return;
+
+        const title =
+            getElement('incidentTitle')?.value.trim();
+
+        const severity =
+            getElement('incidentSeverity')?.value;
+
         const primaryHypothesis =
-            document.getElementById('incidentHypothesis')?.value;
+            getElement('incidentHypothesis')?.value.trim();
+
         const description =
-            document.getElementById('incidentDescription')?.value.trim();
+            getElement('incidentDescription')?.value.trim();
 
         if (!title || !severity || !primaryHypothesis) {
-            alert(t('completeRequiredFields', 'Please complete all required fields.'));
+            alert(t(
+                'completeRequiredFields',
+                'Please complete all required fields.'
+            ));
             return;
         }
 
         const payload = {
             title,
             description: description || null,
-            severity: severity.toUpperCase(),
+            severity: normalizeValue(severity),
             primaryHypothesis
         };
 
-        const submitButton = formCreateIncident.querySelector(
+        const submitButton = form.querySelector(
             'button[type="submit"]'
         );
 
@@ -407,24 +520,26 @@
                 payload
             );
 
-            formCreateIncident.reset();
+            form.reset();
 
             showMyIncidents = false;
-            if (myIncidentsButton) {
-                myIncidentsButton.classList.remove('active');
-            }
+
+            getElement('btn-my-incidents')
+                ?.classList.remove('active');
+
+            const statusFilter =
+                getElement('filter-status-inc');
 
             if (statusFilter) statusFilter.value = '';
 
-            const modalElement = document.getElementById(
-                'createIncidentModal'
-            );
+            const modalElement =
+                getElement('createIncidentModal');
 
-            const modal = modalElement
-                ? bootstrap.Modal.getInstance(modalElement)
-                : null;
-
-            modal?.hide();
+            if (modalElement && window.bootstrap) {
+                bootstrap.Modal
+                    .getInstance(modalElement)
+                    ?.hide();
+            }
 
             await loadIncidents();
 
@@ -440,65 +555,91 @@
         }
     }
 
+    // ==========================================
+    // INVESTIGATION WORKSPACE
+    // ==========================================
+
     function openInvestigationWorkspace(id) {
-        console.log('Opening investigation workspace for incident:', id);
+        if (!id) return;
 
-        const navLinks = document.querySelectorAll('.nav-link');
-
-        const investigationsLink = Array.from(navLinks).find(
-            link => link.getAttribute('data-route') === 'investigations'
+        sessionStorage.setItem(
+            'nova_selected_incident_id',
+            id
         );
 
-        if (investigationsLink) {
-            navLinks.forEach(link => link.classList.remove('active'));
-            investigationsLink.classList.add('active');
-
-            investigationsLink.click();
-
-            // El ID real del incidente queda disponible para el módulo.
-            sessionStorage.setItem('nova_selected_incident_id', id);
-        } else {
-            console.error('Investigations navigation link not found.');
-        }
-    }
-
-    incidentsContainer?.addEventListener('click', event => {
-        const button = event.target.closest('[data-investigation-id]');
-
-        if (!button) return;
-
-        openInvestigationWorkspace(
-            button.dataset.investigationId
+        const link = document.querySelector(
+            '.nav-link[data-route="investigations"]'
         );
-    });
 
-    formCreateIncident?.addEventListener('submit', createIncident);
-
-    searchInput?.addEventListener('input', renderIncidents);
-    severityFilter?.addEventListener('change', renderIncidents);
-    statusFilter?.addEventListener('change', renderIncidents);
-
-    myIncidentsButton?.addEventListener('click', () => {
-        const username = getCurrentUsername();
-
-        if (!username) {
-            alert(
-                t(
-                    'userSessionUnavailable',
-                    'Unable to identify the current user session.'
-                )
+        if (!link) {
+            console.error(
+                'Investigations navigation link not found.'
             );
             return;
         }
 
-        showMyIncidents = !showMyIncidents;
+        link.click();
+    }
 
-        myIncidentsButton.classList.toggle(
-            'active',
-            showMyIncidents
+    // ==========================================
+    // EVENT LISTENERS
+    // ==========================================
+
+    document.addEventListener('submit', event => {
+        if (event.target.id === 'createIncidentForm') {
+            createIncident(event);
+        }
+    });
+
+    document.addEventListener('click', event => {
+        if (event.target.closest('#retry-incidents')) {
+            loadIncidents();
+            return;
+        }
+
+        const investigationButton = event.target.closest(
+            '[data-investigation-id]'
         );
 
-        renderIncidents();
+        if (investigationButton) {
+            openInvestigationWorkspace(
+                investigationButton.dataset.investigationId
+            );
+        }
+
+        if (event.target.closest('#btn-my-incidents')) {
+            const username = getCurrentUsername();
+
+            if (!username) {
+                alert(t(
+                    'userSessionUnavailable',
+                    'Unable to identify the current user session.'
+                ));
+                return;
+            }
+
+            showMyIncidents = !showMyIncidents;
+
+            getElement('btn-my-incidents')
+                ?.classList.toggle('active', showMyIncidents);
+
+            renderIncidents();
+        }
+    });
+
+    document.addEventListener('input', event => {
+        if (event.target.id === 'search-incidents') {
+            renderIncidents();
+        }
+    });
+
+    document.addEventListener('change', event => {
+        if (
+            event.target.id === 'filter-severity-inc' ||
+            event.target.id === 'filter-status-inc'
+        ) {
+            renderIncidents();
+        }
     });
 
     document.addEventListener(
@@ -506,9 +647,19 @@
         renderIncidents
     );
 
+    // ==========================================
+    // PUBLIC METHODS
+    // ==========================================
+
     window.loadIncidents = loadIncidents;
     window.renderIncidents = renderIncidents;
-    window.openInvestigationWorkspace = openInvestigationWorkspace;
+    window.openInvestigationWorkspace =
+        openInvestigationWorkspace;
+
+    // ==========================================
+    // INITIALIZATION
+    // ==========================================
 
     loadIncidents();
+
 })();
